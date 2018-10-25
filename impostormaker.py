@@ -8,6 +8,8 @@
 #   October, 2018
 #   License: GPL 3
 #
+#   Impostor maker, where the work gets done.
+#
 import bpy
 
 class ImpostorMaker(bpy.types.Operator) :
@@ -18,6 +20,7 @@ class ImpostorMaker(bpy.types.Operator) :
 
     def execute(self, context):         # execute() is called by blender when running the operator.
         #   Do the work here
+        print("Impostor maker 2 starting.")           # ***TEMP***
 
         return {'FINISHED'}             # this lets blender know the operator finished successfully.
 
