@@ -53,4 +53,20 @@ class ImpostorMaker(bpy.types.Operator) :
         print("Target: " + target.name) 
         print("Sources: " + ",".join([obj.name for obj in sources]))
         
+        ####me = context.object.data
+        me = target.data
+        ####uv_layer = me.uv_layers.active.data
+
+        for poly in me.polygons:
+            print("Polygon index: %d, length: %d" % (poly.index, poly.loop_total))
+
+            # range is used here to show how the polygons reference loops,
+            # for convenience 'poly.loop_indices' can be used instead.
+            vertices = me.vertices
+            for loop_index in range(poly.loop_start, poly.loop_start + poly.loop_total):
+                vertexid = me.loops[loop_index].vertex_index
+                coords = me.vertices[vertexid].co
+                print("    Vertex: %d: (%1.4f,%1.4f,%1.4f)" % (vertexid, coords[0],coords[1],coords[2]))
+                ####print("    UV: %r" % uv_layer[loop_index].uv)
+        
 
