@@ -11,23 +11,91 @@
 #   Impostor maker, where the work gets done.
 #
 import bpy
+import mathutils
 #
 #   Constants
 #
 DRAWABLE = ['MESH', 'CURVE', 'SURFACE', 'META', 'FONT', 'ARMATURE', 'LATTICE']      # drawable types
 
+NORMALERROR = 0.001                     # allowed difference for two normals being the same
+
+class ImpostorFace :
+    """
+    Face of an impostor object.
+    
+    Contains one or more polygons, all coplanar.
+    """        
+    def __init__(self, context, target, poly) :
+        self.normal = None                  # no normal yet
+        self.polys = [poly]                 # polygons
+        self.vertexids = set()              # empty set
+        me = target.data
+        vertices = me.vertices
+        if poly.loop_total < 3 :            # can't compute a normal
+            raise RuntimeError("A face of \"%s\" has less than 3 vertices." % (target.name,))
+        #   We need a normal for the face. Not a graphics normal, a geometric one based on the vertices.
+        #   Get a list of coordinates
+        vertexcoords = []
+        for loop_index in range(poly.loop_start, poly.loop_start + poly.loop_total):
+            vertexid = me.loops[loop_index].vertex_index
+            self.vertexids.add(vertexid)    # add to set
+            coords = me.vertices[vertexid].co
+            vertexcoords.append(coords)         
+            print("    Vertex: %d: (%1.4f,%1.4f,%1.4f)" % (vertexid, coords[0],coords[1],coords[2]))
+        #   Get two successive edges to get a normal for the face              
+        for ix in range(len(vertexcoords)) :
+            v0 = vertexcoords[ix]           # get 3 points, wrapping around
+            v1 = vertexcoords[(ix+1) % len(vertexcoords)]
+            v2 = vertexcoords[(ix+2) % len(vertexcoords)]
+            cross = (v1-v0).cross(v2-v1)    # direction of normal
+            ####print("   Cross: " + str(cross))
+            if cross.length < NORMALERROR : # collinear edges - cannot compute a normal
+                print("  Cross length error: %f" % (cross.length))
+                continue                    # skip this edge pair
+            cross.normalize()               # normal vector, probably
+            if self.normal :
+                if self.normal.dot(cross) < 1.0 - NORMALERROR :
+                    raise RuntimeError("A face of \"%s\" is not flat." % (target.name,))
+            else :
+                self.normal = cross         # we have a face normal
+        if not self.normal :
+            raise RuntimeError("Unable to compute a normal for a face of \"%s\"." % (target.name,)) # degenerate geometry of some kind    
+        print("  Face normal: (%1.4f,%1.4f,%1.4f)" % (self.normal[0],self.normal[1],self.normal[2]))        
+            
+        
+    def merge(self, otherface) :            # merge in another face
+        if (not self.normal) or (not otherface.normal) :
+            return False                    # merge fails
+        if self.normal.dot(otherface.normal) < (1.0 - NORMALERROR) :
+            return False                    # not coplanar, no merge
+        if len(self.verts.intersection(otherface.verts)) < 2 :
+            return False                    # must have at least 2 verts in common (an edge)
+        #   OK to merge
+        self.polys.extend(otherface.polys)      # merge
+        pass
+        
+    def dump(self) :
+        print("Face: %d polys, %d vertices, normal (%1.4f,%1.4f,%1.4f)" %  (len(self.polys), len(self.vertexids), self.normal[0],self.normal[1],self.normal[2]))  
+    
+
+
 class ImpostorMaker(bpy.types.Operator) :
     """Impostor maker"""                # blender will use this as a tooltip for menu items and buttons.
+    #   Class static variables
     bl_idname = "object.impostor_maker" # unique identifier for buttons and menu items to reference.
     bl_label = "Make impostor"          # display name in the interface.
     bl_options = {'REGISTER', 'UNDO'}   # enable undo for the operator.
+    
+    def __init__(self) :
+        """ Constructor """
+        pass
     
     def errormsg(self, msg) :
         print("ERROR: " + msg)           # ***TEMP*** until we find a better way
 
     def execute(self, context):         # execute() is called by blender when running the operator.
         #   Do the work here
-        print("Impostor maker 2 starting.")           # ***TEMP***
+        print("Impostor maker starting.")           # ***TEMP***
         #   Target impostor is last selected object.
         #   Objects to render are all other selected objects.
         #   If only one object is selected, it is the impostor, 
@@ -56,10 +124,11 @@ class ImpostorMaker(bpy.types.Operator) :
         ####me = context.object.data
         me = target.data
         ####uv_layer = me.uv_layers.active.data
-
+        faces = []
         for poly in me.polygons:
             print("Polygon index: %d, length: %d" % (poly.index, poly.loop_total))
-
+            faces.append(ImpostorFace(context, target, poly))       # build face objects
+            continue
             # range is used here to show how the polygons reference loops,
             # for convenience 'poly.loop_indices' can be used instead.
             vertices = me.vertices
@@ -68,5 +137,23 @@ class ImpostorMaker(bpy.types.Operator) :
                 coords = me.vertices[vertexid].co
                 print("    Vertex: %d: (%1.4f,%1.4f,%1.4f)" % (vertexid, coords[0],coords[1],coords[2]))
                 ####print("    UV: %r" % uv_layer[loop_index].uv)
+            faces.append(face)                          # accum faces
+        # Merge faces if they have the same normal and an edge in common.
+        print("Before merge")
+        for f in faces :
+            f.dump()
+        faces2 = []
+        prevface = None
+        for face in faces :
+            if not (prevface and prevface.merge(face)) :
+                faces2.append(face)
+            prevface = face
+        faces2.append(prevface)
+        print("After merge")
+        faces = faces2
+        for f in faces :
+            f.dump()
+                
+            
         
 
