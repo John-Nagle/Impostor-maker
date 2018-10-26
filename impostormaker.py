@@ -29,6 +29,7 @@ class ImpostorFace :
         self.normal = None                  # no normal yet
         self.polys = [poly]                 # polygons
         self.vertexids = set()              # empty set
+        self.edgeids = set()                # set of pairs of vertex IDs
         me = target.data
         vertices = me.vertices
         if poly.loop_total < 3 :            # can't compute a normal
@@ -37,18 +38,26 @@ class ImpostorFace :
         #   Get a list of coordinates
         vertexcoords = []
         for loop_index in range(poly.loop_start, poly.loop_start + poly.loop_total):
-            vertexid = me.loops[loop_index].vertex_index
-            self.vertexids.add(vertexid)    # add to set
-            coords = me.vertices[vertexid].co
+            vid0 = me.loops[loop_index].vertex_index
+            vid1 = me.loops[poly.loop_start + (loop_index - poly.loop_start + 1) % poly.loop_total].vertex_index # next, circularly
+            vid2 = me.loops[poly.loop_start + (loop_index - poly.loop_start + 2) % poly.loop_total].vertex_index # next, circularly
+            vidix1 = (loop_index + 1) % poly.loop_total
+            vid1x = me.loops[vidix1].vertex_index
+            print("    Vidix1: %d  Vid1x: %d  poly.loop_total: %d" % (vidix1, vid1x, poly.loop_total))    # ***TEMP***
+            print("    Loop index %d: Vertex indices: %d %d %d" % (loop_index, vid0, vid1, vid2))  
+            #   Get two successive vertices to get an edge ID
+            self.edgeids.add((vid0, vid1))
+            self.vertexids.add(vid0)        # add to set
+            coords = me.vertices[vid0].co
             vertexcoords.append(coords)         
-            print("    Vertex: %d: (%1.4f,%1.4f,%1.4f)" % (vertexid, coords[0],coords[1],coords[2]))
-        #   Get two successive edges to get a normal for the face              
-        for ix in range(len(vertexcoords)) :
-            v0 = vertexcoords[ix]           # get 3 points, wrapping around
-            v1 = vertexcoords[(ix+1) % len(vertexcoords)]
-            v2 = vertexcoords[(ix+2) % len(vertexcoords)]
+            ####print("    Old Vertex: %d: (%1.4f,%1.4f,%1.4f)" % (vid0, coords[0],coords[1],coords[2]))
+            #   Get two successive edges to get a normal for the face              
+            v0 = me.vertices[vid0].co       # get 3 points, wrapping around
+            v1 = me.vertices[vid1].co
+            v2 = me.vertices[vid2].co
+            print("    Vertex: %d: (%1.4f,%1.4f,%1.4f)" % (vid0, v0[0],v0[1],v0[2]))
             cross = (v1-v0).cross(v2-v1)    # direction of normal
-            ####print("   Cross: " + str(cross))
+            print("   Cross: " + str(cross))
             if cross.length < NORMALERROR : # collinear edges - cannot compute a normal
                 print("  Cross length error: %f" % (cross.length))
                 continue                    # skip this edge pair
@@ -125,9 +134,11 @@ class ImpostorMaker(bpy.types.Operator) :
         me = target.data
         ####uv_layer = me.uv_layers.active.data
         faces = []
+        #   Polygons seem to have no particular order. Successive ones may not be on the same face.
+        #   So we have to do our own merging.
         for poly in me.polygons:
             print("Polygon index: %d, length: %d" % (poly.index, poly.loop_total))
-            faces.append(ImpostorFace(context, target, poly))       # build face objects
+            faces.append(ImpostorFace(context, target, poly))       # build single poly face objects
             continue
             # range is used here to show how the polygons reference loops,
             # for convenience 'poly.loop_indices' can be used instead.
