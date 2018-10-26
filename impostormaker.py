@@ -21,6 +21,27 @@ DRAWABLE = ['MESH', 'CURVE', 'SURFACE', 'META', 'FONT', 'ARMATURE', 'LATTICE']  
 
 NORMALERROR = 0.001                     # allowed difference for two normals being the same
 
+#   Non-class functions
+def update_camera(camera, focus_point=mathutils.Vector((0.0, 0.0, 0.0)), distance=10.0):
+    """
+    Focus the camera to a focus point and place the camera at a specific distance from that
+    focus point. The camera stays in a direct line with the focus point.
+
+    :param camera: the camera object
+    :type camera: bpy.types.object
+    :param focus_point: the point to focus on (default=``mathutils.Vector((0.0, 0.0, 0.0))``)
+    :type focus_point: mathutils.Vector
+    :param distance: the distance to keep to the focus point (default=``10.0``)
+    :type distance: float
+    """
+    looking_direction = camera.location - focus_point
+    rot_quat = looking_direction.to_track_quat('Z', 'Y')
+
+    camera.rotation_euler = rot_quat.to_euler()
+    camera.location = rot_quat * mathutils.Vector((0.0, 0.0, distance))
+
+####update_camera(bpy.data.objects['Camera'])
+
 class ImpostorFace :
     """
     Face of an impostor object.
@@ -32,6 +53,7 @@ class ImpostorFace :
         self.vertexids = []                 # vertex indices into 
         self.baseedge = None                # (vertID, vertID)
         self.center = None                  # center of face, object coords
+        self.worldtransform = target.matrix_world  # transform to global coords
         assert(target.type == "MESH", "Must be a mesh target")  
         me = target.data                    # mesh info
         vertices = me.vertices
@@ -82,6 +104,21 @@ class ImpostorFace :
         #   Compute bounding box of face.  Use base edge as the bottom of the bounding box.
         #   This will be the area of the image we will take and map onto the face.  
         #   ***MORE***
+        
+    def getcameralocation(self) :
+        """
+        Get location for camera, world coords
+        """
+        disttocamera = 2.0                      # ***TEMP***
+        camerapos = self.center + self.normal*disttocamera  # location of camera, local coords
+        return self.worldtransform * camerapos
+        
+    def getcameralookat(self) :
+        """
+        Get look-at point, world coords
+        """
+        return self.worldtransform * self.center
+        
         
     def getedgeids(self) :
         """
@@ -162,5 +199,14 @@ class ImpostorMaker(bpy.types.Operator) :
         print("Faces")
         for f in faces :
             f.dump()
+        #   Test by moving camera to look at first face
+        face = faces[0]
+        camera = bpy.data.objects['Camera']
+        camera.location = face.getcameralocation()
+        print("Camera location: %s" % (camera.location,))
+        looking_direction = camera.location - face.getcameralookat()
+        rot_quat = looking_direction.to_track_quat('Z', 'Y')
+        camera.rotation_euler = rot_quat.to_euler()
+        
         
 
