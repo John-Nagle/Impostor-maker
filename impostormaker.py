@@ -12,6 +12,7 @@
 #
 import bpy
 import mathutils
+import collections
 #
 #   Constants
 #
@@ -44,7 +45,7 @@ class ImpostorFace :
             vid2 = meloop[(loop_index + 2) % poly.loop_total].vertex_index # next, circularly
             print("    Loop index %d: Vertex indices: %d %d %d" % (loop_index, vid0, vid1, vid2))  
             #   Get two successive vertices to get an edge ID
-            self.edgeids.add((vid0, vid1))
+            self.edgeids.add(tuple(sorted((vid0, vid1))))
             self.vertexids.add(vid0)        # add to set
             coords = me.vertices[vid0].co
             vertexcoords.append(coords)         
@@ -67,7 +68,13 @@ class ImpostorFace :
                 self.normal = cross         # we have a face normal
         if not self.normal :
             raise RuntimeError("Unable to compute a normal for a face of \"%s\"." % (target.name,)) # degenerate geometry of some kind    
-        print("  Face normal: (%1.4f,%1.4f,%1.4f)" % (self.normal[0],self.normal[1],self.normal[2]))        
+        print("  Face normal: (%1.4f,%1.4f,%1.4f)" % (self.normal[0],self.normal[1],self.normal[2]))   
+        
+    def getedgeids(self) :
+        """
+        Return set of edge tuples for this face
+        """
+        return self.edgeids                    
             
         
     def merge(self, otherface) :            # merge in another face
@@ -75,11 +82,11 @@ class ImpostorFace :
             return False                    # merge fails
         if self.normal.dot(otherface.normal) < (1.0 - NORMALERROR) :
             return False                    # not coplanar, no merge
-        if len(self.verts.intersection(otherface.verts)) < 2 :
-            return False                    # must have at least 2 verts in common (an edge)
-        #   OK to merge
+        if not self.edgeids.intersection(otherface.edgeids) :
+            return False                    # must have a common edge
         self.polys.extend(otherface.polys)      # merge
-        pass
+        self.edgeids = self.edgeids.union(otherface.edgeids)    
+        return True
         
     def dump(self) :
         print("Face: %d polys, %d vertices, normal (%1.4f,%1.4f,%1.4f)" %  (len(self.polys), len(self.vertexids), self.normal[0],self.normal[1],self.normal[2]))  
@@ -137,30 +144,30 @@ class ImpostorMaker(bpy.types.Operator) :
         for poly in me.polygons:
             print("Polygon index: %d, length: %d" % (poly.index, poly.loop_total))
             faces.append(ImpostorFace(context, target, poly))       # build single poly face objects
-            continue
-            # range is used here to show how the polygons reference loops,
-            # for convenience 'poly.loop_indices' can be used instead.
-            vertices = me.vertices
-            for loop_index in range(poly.loop_start, poly.loop_start + poly.loop_total):
-                vertexid = me.loops[loop_index].vertex_index
-                coords = me.vertices[vertexid].co
-                print("    Vertex: %d: (%1.4f,%1.4f,%1.4f)" % (vertexid, coords[0],coords[1],coords[2]))
-                ####print("    UV: %r" % uv_layer[loop_index].uv)
-            faces.append(face)                          # accum faces
         # Merge faces if they have the same normal and an edge in common.
+        
         print("Before merge")
         for f in faces :
             f.dump()
-        faces2 = []
-        prevface = None
+        #   Build list of which edges are in which faces
+        edgeusage = {}
         for face in faces :
-            if not (prevface and prevface.merge(face)) :
-                faces2.append(face)
-            prevface = face
-        faces2.append(prevface)
+            for edge in face.getedgeids() :
+                if edge in edgeusage :
+                    edgeusage[edge].append(face) 
+                else :
+                    edgeusage[edge] = [face]
+        #   Try to merge faces which share an edge
+        faceset = set(faces)
+        print(edgeusage)     ## ***TEMP***
+        for edge, faces in edgeusage.items() :
+            if len(faces) > 2  or len(faces) < 1:
+                raise RuntimeError("Bad geometry: %d faces of \"%s\" share an edge." % (len(faces),target.name)) # degenerate geometry of some kind
+            if (len(faces) == 2) :                              # attempt merge
+                if faces[0].merge(faces[1]) :
+                    faceset.remove(faces[1])
         print("After merge")
-        faces = faces2
-        for f in faces :
+        for f in faceset :
             f.dump()
                 
             
