@@ -37,13 +37,11 @@ class ImpostorFace :
         #   We need a normal for the face. Not a graphics normal, a geometric one based on the vertices.
         #   Get a list of coordinates
         vertexcoords = []
-        for loop_index in range(poly.loop_start, poly.loop_start + poly.loop_total):
-            vid0 = me.loops[loop_index].vertex_index
-            vid1 = me.loops[poly.loop_start + (loop_index - poly.loop_start + 1) % poly.loop_total].vertex_index # next, circularly
-            vid2 = me.loops[poly.loop_start + (loop_index - poly.loop_start + 2) % poly.loop_total].vertex_index # next, circularly
-            vidix1 = (loop_index + 1) % poly.loop_total
-            vid1x = me.loops[vidix1].vertex_index
-            print("    Vidix1: %d  Vid1x: %d  poly.loop_total: %d" % (vidix1, vid1x, poly.loop_total))    # ***TEMP***
+        meloop = me.loops[poly.loop_start : poly.loop_start + poly.loop_total]                # vertices in this loop
+        for loop_index in range(len(meloop)) :
+            vid0 = meloop[loop_index].vertex_index
+            vid1 = meloop[(loop_index + 1) % poly.loop_total].vertex_index # next, circularly
+            vid2 = meloop[(loop_index + 2) % poly.loop_total].vertex_index # next, circularly
             print("    Loop index %d: Vertex indices: %d %d %d" % (loop_index, vid0, vid1, vid2))  
             #   Get two successive vertices to get an edge ID
             self.edgeids.add((vid0, vid1))
