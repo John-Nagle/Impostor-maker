@@ -32,6 +32,7 @@ class ImpostorFace :
         self.vertexids = []                 # vertex indices into 
         self.baseedge = None                # (vertID, vertID)
         self.center = None                  # center of face, object coords
+        assert(target.type == "MESH", "Must be a mesh target")  
         me = target.data                    # mesh info
         vertices = me.vertices
         if poly.loop_total < 3 :            # can't compute a normal
@@ -123,7 +124,7 @@ class ImpostorMaker(bpy.types.Operator) :
             return {'FINISHED'}
         target = context.selected_objects[-1]       # target impostor
         if target.type != 'MESH' :
-            self.errormsg("Impostor must be mesh.")
+            self.errormsg("Impostor \"%s\"must be a mesh." % (target.name,))
             return {'FINISHED'}
         sources = context.selected_objects[:-1]     # source objects
         if not sources :                            # if no source objects
