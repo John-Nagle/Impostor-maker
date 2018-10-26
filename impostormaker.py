@@ -11,8 +11,9 @@
 #   Impostor maker, where the work gets done.
 #
 import bpy
+import bmesh
 import mathutils
-import collections
+import math
 #
 #   Constants
 #
@@ -37,8 +38,7 @@ class ImpostorFace :
             raise RuntimeError("A face of \"%s\" has less than 3 vertices." % (target.name,))
         #   We need a normal for the face. Not a graphics normal, a geometric one based on the vertices.
         #   Get a list of coordinates
-        vertexcoords = []
-        meloop = me.loops[poly.loop_start : poly.loop_start + poly.loop_total]                # vertices in this loop
+        meloop = me.loops[poly.loop_start : poly.loop_start + poly.loop_total]   # vertices in this loop
         for loop_index in range(len(meloop)) :
             vid0 = meloop[loop_index].vertex_index
             vid1 = meloop[(loop_index + 1) % poly.loop_total].vertex_index # next, circularly
@@ -48,7 +48,6 @@ class ImpostorFace :
             self.edgeids.add(tuple(sorted((vid0, vid1))))
             self.vertexids.add(vid0)        # add to set
             coords = me.vertices[vid0].co
-            vertexcoords.append(coords)         
             ####print("    Old Vertex: %d: (%1.4f,%1.4f,%1.4f)" % (vid0, coords[0],coords[1],coords[2]))
             #   Get two successive edges to get a normal for the face              
             v0 = me.vertices[vid0].co       # get 3 points, wrapping around
@@ -82,10 +81,13 @@ class ImpostorFace :
             return False                    # merge fails
         if self.normal.dot(otherface.normal) < (1.0 - NORMALERROR) :
             return False                    # not coplanar, no merge
-        if not self.edgeids.intersection(otherface.edgeids) :
+        commonedges = self.edgeids.intersection(otherface.edgeids) 
+        if not commonedges :
             return False                    # must have a common edge
         self.polys.extend(otherface.polys)      # merge
-        self.edgeids = self.edgeids.union(otherface.edgeids)    
+        self.edgeids = self.edgeids.union(otherface.edgeids)  
+        self.edgeids = self.edgeids.difference(commonedges)         # remove edges we just merged out
+        self.vertexids = self.vertexids.union(otherface.vertexids)  # Not too useful - order has been lost  
         return True
         
     def dump(self) :
@@ -131,7 +133,7 @@ class ImpostorMaker(bpy.types.Operator) :
         self.buildimpostor(context, target, sources)
         return {'FINISHED'}             # this lets blender know the operator finished successfully.
         
-    def mergefaces(self, faces) :
+    def mergefaces(self, faces, target) :
         """
         Merge faces if they have the same normal and an edge in common.
         """
@@ -147,29 +149,38 @@ class ImpostorMaker(bpy.types.Operator) :
         faceset = set(faces)
         for edge, faces in edgeusage.items() :
             if len(faces) > 2  or len(faces) < 1:
+                #   ***NEEDS TO BE SMARTER ABOUT MORE THAN 2 EDGES, which can happen after merging***
                 raise RuntimeError("Bad geometry: %d faces of \"%s\" share an edge." % (len(faces),target.name)) # degenerate geometry of some kind
             if (len(faces) == 2) :                              # attempt merge
-                if faces[0].merge(faces[1]) :
+                if faces[0].merge(faces[1]) and faces[1] in faceset :
                     faceset.remove(faces[1])                    # if merge successful, drop one merged out from set
         return list(faceset)
+        
+    def limiteddissolve(self, context, target) :
+        """
+        Do a limited dissolve on the target object to combine coplanar triangles into big faces.
+        """
+        BREAKANGLE = math.radians(0.1)              # must be very flat
+        bm = bmesh.new()                            # get working mesh
+        bm.from_mesh(target.data)                   # load it from target object
+        #   Limited dissove with very shallow break angle
+        bmesh.ops.dissolve_limit(bm, angle_limit=BREAKANGLE, verts=bm.verts, edges=bm.edges)
+        bm.to_mesh(target.data)                     # put back in original object
+        target.data.update()                        # and update the target
+        bm.clear()                                  # clean up
+        bm.free()
 
         
     def buildimpostor(self, context, target, sources) :
         print("Target: " + target.name) 
-        print("Sources: " + ",".join([obj.name for obj in sources]))        
+        print("Sources: " + ",".join([obj.name for obj in sources]))  
+        #   Do a limited dissolve on the target object to combine coplanar triangles into big faces. 
+        self.limiteddissolve(context, target)     
         faces = []
         for poly in target.data.polygons:
             faces.append(ImpostorFace(context, target, poly))       # build single poly face objects
-        #   Polygons seem to have no particular order. Successive ones may not be on the same face.
-        #   So we have to do our own merging. This is just de-triangulation.
-        print("Before merge")
+        print("Faces")
         for f in faces :
             f.dump()
-        faces = self.mergefaces(faces)
-        print("After merge")
-        for f in faces :
-            f.dump()
-                
-            
         
 
