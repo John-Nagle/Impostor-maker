@@ -43,7 +43,7 @@ class ImpostorFace :
             vid0 = meloop[loop_index].vertex_index
             vid1 = meloop[(loop_index + 1) % poly.loop_total].vertex_index # next, circularly
             vid2 = meloop[(loop_index + 2) % poly.loop_total].vertex_index # next, circularly
-            print("    Loop index %d: Vertex indices: %d %d %d" % (loop_index, vid0, vid1, vid2))  
+            ####print("    Loop index %d: Vertex indices: %d %d %d" % (loop_index, vid0, vid1, vid2))  
             #   Get two successive vertices to get an edge ID
             self.edgeids.add(tuple(sorted((vid0, vid1))))
             self.vertexids.add(vid0)        # add to set
@@ -56,9 +56,9 @@ class ImpostorFace :
             v2 = me.vertices[vid2].co
             print("    Vertex: %d: (%1.4f,%1.4f,%1.4f)" % (vid0, v0[0],v0[1],v0[2]))
             cross = (v1-v0).cross(v2-v1)    # direction of normal
-            print("   Cross: " + str(cross))
+            #### print("   Cross: " + str(cross))
             if cross.length < NORMALERROR : # collinear edges - cannot compute a normal
-                print("  Cross length error: %f" % (cross.length))
+                print("  Cross length error: %f" % (cross.length))  # ***TEMP*** this is OK, not an error
                 continue                    # skip this edge pair
             cross.normalize()               # normal vector, probably
             if self.normal :
@@ -131,24 +131,10 @@ class ImpostorMaker(bpy.types.Operator) :
         self.buildimpostor(context, target, sources)
         return {'FINISHED'}             # this lets blender know the operator finished successfully.
         
-    def buildimpostor(self, context, target, sources) :
-        print("Target: " + target.name) 
-        print("Sources: " + ",".join([obj.name for obj in sources]))
-        
-        ####me = context.object.data
-        me = target.data
-        ####uv_layer = me.uv_layers.active.data
-        faces = []
-        #   Polygons seem to have no particular order. Successive ones may not be on the same face.
-        #   So we have to do our own merging.
-        for poly in me.polygons:
-            print("Polygon index: %d, length: %d" % (poly.index, poly.loop_total))
-            faces.append(ImpostorFace(context, target, poly))       # build single poly face objects
-        # Merge faces if they have the same normal and an edge in common.
-        
-        print("Before merge")
-        for f in faces :
-            f.dump()
+    def mergefaces(self, faces) :
+        """
+        Merge faces if they have the same normal and an edge in common.
+        """
         #   Build list of which edges are in which faces
         edgeusage = {}
         for face in faces :
@@ -159,15 +145,29 @@ class ImpostorMaker(bpy.types.Operator) :
                     edgeusage[edge] = [face]
         #   Try to merge faces which share an edge
         faceset = set(faces)
-        print(edgeusage)     ## ***TEMP***
         for edge, faces in edgeusage.items() :
             if len(faces) > 2  or len(faces) < 1:
                 raise RuntimeError("Bad geometry: %d faces of \"%s\" share an edge." % (len(faces),target.name)) # degenerate geometry of some kind
             if (len(faces) == 2) :                              # attempt merge
                 if faces[0].merge(faces[1]) :
-                    faceset.remove(faces[1])
+                    faceset.remove(faces[1])                    # if merge successful, drop one merged out from set
+        return list(faceset)
+
+        
+    def buildimpostor(self, context, target, sources) :
+        print("Target: " + target.name) 
+        print("Sources: " + ",".join([obj.name for obj in sources]))        
+        faces = []
+        for poly in target.data.polygons:
+            faces.append(ImpostorFace(context, target, poly))       # build single poly face objects
+        #   Polygons seem to have no particular order. Successive ones may not be on the same face.
+        #   So we have to do our own merging. This is just de-triangulation.
+        print("Before merge")
+        for f in faces :
+            f.dump()
+        faces = self.mergefaces(faces)
         print("After merge")
-        for f in faceset :
+        for f in faces :
             f.dump()
                 
             
