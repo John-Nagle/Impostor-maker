@@ -90,7 +90,7 @@ class ImpostorFace :
             edgelength = (v1-v0).length         # length of edge
             if edgelength > baseedgelength :
                 baseedgelength = edgelength     # new winner
-                self.baseedge = (vid0, vid1)    # save longest edge tuple
+                self.baseedge = (v0, v1)        # save longest edge coords
             #   Compute center of face. Just the average of the corners.
             if not self.center :
                 self.center = v0
@@ -105,11 +105,35 @@ class ImpostorFace :
         #   This will be the area of the image we will take and map onto the face.  
         #   ***MORE***
         
+    def getfaceplanetransform(self) :
+        """
+        Calculate a transform which will transform coordinates of the face into
+        local coordinates such that 
+        1) X axis is aligned with self.baseedge
+        2) Z axis is aligned with normal and +Z is in the normal direction
+        3) Origin is at self.center
+        
+        ***UNTESTED***
+        """
+        print(self.baseedge)    # ***TEMP***
+        xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
+        xvec.normalize()                                                # must be nonzero because degenerate polys rejected in constructor
+        rot0 = mathutils.Quaternion(self.normal, 0.0)                   # get vector with zero totation
+        xaxisdir = rot0 * mathutils.Vector((1,0,0))                                 # x axis with zero rotation 
+        angle = math.acos(xaxisdir.dot(xvec))
+        if xaxisdir.cross(xvec) < 0 :                                   # fix cosine ambiguity
+            angle = -angle
+        orient = mathutils.Quaternion(self.normal, angle)               # orientation of picture frame in object coordinates
+        pos = mathutils.Matrix.Translation(self.center)                 # ***WRONG** returning a vector??
+        orientmat = orient.to_matrix()
+        orientmat.resize_4x4()
+        return pos*orientmat                                  # position and orientation      
+        
     def getcameralocation(self) :
         """
         Get location for camera, world coords
         """
-        disttocamera = 2.0                      # ***TEMP***
+        disttocamera = 5.0                                              # ***TEMP***
         camerapos = self.center + self.normal*disttocamera  # location of camera, local coords
         return self.worldtransform * camerapos
         
@@ -118,6 +142,13 @@ class ImpostorFace :
         Get look-at point, world coords
         """
         return self.worldtransform * self.center
+        
+    def getcameraorthoscale(self) :
+        """
+        Get camera orthographic scale.
+        (h,v)
+        """
+        pass
         
         
     def getedgeids(self) :
@@ -202,11 +233,25 @@ class ImpostorMaker(bpy.types.Operator) :
         #   Test by moving camera to look at first face
         face = faces[0]
         camera = bpy.data.objects['Camera']
+        bpy.data.cameras['Camera'].type = 'ORTHO'
+        bpy.data.cameras['Camera'].ortho_scale = 4.0
+        ####camera.type('ORTHO')
         camera.location = face.getcameralocation()
         print("Camera location: %s" % (camera.location,))
         looking_direction = camera.location - face.getcameralookat()
         rot_quat = looking_direction.to_track_quat('Z', 'Y')
         camera.rotation_euler = rot_quat.to_euler()
+        #   Add an object to test the transformation
+        #   ***NEEDS WORK***
+        xform = face.getfaceplanetransform()                    # get positioning transform
+        ####pos = xform.translation()
+        ###rot = xform.getRotation()
+        pos = face.worldtransform * face.center                 # dummy start pos
+        bpy.ops.mesh.primitive_cube_add(location=pos) #### , rotation=rot)           # frame-like
+        bpy.context.object.name = "Cube1"
+        bpy.context.object.scale = (2, 0.5, 0.1)
+        xform = face.getfaceplanetransform()                    # get positioning transform
+
         
         
 
