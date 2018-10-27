@@ -22,7 +22,42 @@ DRAWABLE = ['MESH', 'CURVE', 'SURFACE', 'META', 'FONT', 'ARMATURE', 'LATTICE']  
 NORMALERROR = 0.001                     # allowed difference for two normals being the same
 
 #   Non-class functions
-def update_camera(camera, focus_point=mathutils.Vector((0.0, 0.0, 0.0)), distance=10.0):
+
+def matrixlookat(eye, targetpt, up) :
+    """
+    Generate a LookAt matrix. Rotates to object pointing in dirvec with given up vector.
+    
+    From https://github.com/mono/opentk/blob/master/Source/OpenTK/Math/Matrix4.cs
+    """
+    z = eye - targetpt
+    x = up.cross(z)
+    y = z.cross(x)
+    
+    x.normalize()
+    y.normalize()
+    z.normalize()
+    
+    rot = mathutils.Matrix()
+    rot[0][0] = x[0]
+    rot[0][1] = y[0]
+    rot[0][2] = z[0]
+    rot[0][3] = 0
+    rot[1][0] = x[1]
+    rot[1][1] = y[1]
+    rot[1][2] = z[1]
+    rot[1][3] = 0
+    rot[2][0] = x[2]
+    rot[2][1] = y[2]
+    rot[2][2] = z[2]
+    rot[2][3] = 0
+    
+    # eye not need to be minus cmp to opentk 
+    # perhaps opentk has z inverse axis
+    tran = mathutils.Matrix.Translation(eye)
+    return tran * rot
+
+
+def updatecamera(camera, focus_point=mathutils.Vector((0.0, 0.0, 0.0)), distance=10.0):
     """
     Focus the camera to a focus point and place the camera at a specific distance from that
     focus point. The camera stays in a direct line with the focus point.
@@ -39,6 +74,8 @@ def update_camera(camera, focus_point=mathutils.Vector((0.0, 0.0, 0.0)), distanc
 
     camera.rotation_euler = rot_quat.to_euler()
     camera.location = rot_quat * mathutils.Vector((0.0, 0.0, distance))
+    
+    
 
 ####update_camera(bpy.data.objects['Camera'])
 
@@ -118,17 +155,10 @@ class ImpostorFace :
         print(self.baseedge)    # ***TEMP***
         xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
         xvec.normalize()                                                # must be nonzero because degenerate polys rejected in constructor
-        rot0 = mathutils.Quaternion(self.normal, 0.0)                   # get vector with zero totation
-        xaxisdir = rot0 * mathutils.Vector((1,0,0))                                 # x axis with zero rotation 
-        angle = math.acos(xaxisdir.dot(xvec))
-        if xaxisdir.cross(xvec) < 0 :                                   # fix cosine ambiguity
-            angle = -angle
-        orient = mathutils.Quaternion(self.normal, angle)               # orientation of picture frame in object coordinates
-        pos = mathutils.Matrix.Translation(self.center)                 # ***WRONG** returning a vector??
-        orientmat = orient.to_matrix()
-        orientmat.resize_4x4()
-        return pos*orientmat                                  # position and orientation      
-        
+        upvec = xvec.cross(self.normal)                                 # up vector
+        orientmat = matrixlookat(self.center, self.center + self.normal, upvec)     # rotation to proper orientation 
+        return orientmat                                                
+               
     def getcameralocation(self) :
         """
         Get location for camera, world coords
@@ -249,8 +279,10 @@ class ImpostorMaker(bpy.types.Operator) :
         pos = face.worldtransform * face.center                 # dummy start pos
         bpy.ops.mesh.primitive_cube_add(location=pos) #### , rotation=rot)           # frame-like
         bpy.context.object.name = "Cube1"
-        bpy.context.object.scale = (2, 0.5, 0.1)
         xform = face.getfaceplanetransform()                    # get positioning transform
+        xformworld = face.worldtransform * xform                # in world space
+        bpy.context.object.matrix_world = xformworld            # apply rotation
+        bpy.context.object.scale = (2, 0.5, 0.1)                # apply scale
 
         
         
