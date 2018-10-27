@@ -124,7 +124,10 @@ class ImpostorFace :
             else :
                 self.normal = cross             # we have a face normal
             #   Find longest, lowest edge. This will be the bottom of the image.
-            edgelength = (v1-v0).length         # length of edge
+            ####edgelength = ((v1-v0) * (target.scale)).length  # length of edge
+            edge = v1-v0
+            edge = mathutils.Vector((edge[0]*target.scale[0], edge[1]*target.scale[1], edge[2]*target.scale[2])) # There must be a function for this
+            edgelength = edge.length
             if edgelength > baseedgelength :
                 baseedgelength = edgelength     # new winner
                 self.baseedge = (v0, v1)        # save longest edge coords
@@ -148,13 +151,10 @@ class ImpostorFace :
         local coordinates such that 
         1) X axis is aligned with self.baseedge
         2) Z axis is aligned with normal and +Z is in the normal direction
-        3) Origin is at self.center
-        
-        ***UNTESTED***
+        3) Origin is at self.center      
         """
-        print(self.baseedge)    # ***TEMP***
+        #### print("Base edge" + str(self.baseedge))    # ***TEMP***
         xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
-        xvec.normalize()                                                # must be nonzero because degenerate polys rejected in constructor
         upvec = xvec.cross(self.normal)                                 # up vector
         orientmat = matrixlookat(self.center, self.center + self.normal, upvec)     # rotation to proper orientation 
         return orientmat                                                
@@ -273,9 +273,6 @@ class ImpostorMaker(bpy.types.Operator) :
         camera.rotation_euler = rot_quat.to_euler()
         #   Add an object to test the transformation
         #   ***NEEDS WORK***
-        xform = face.getfaceplanetransform()                    # get positioning transform
-        ####pos = xform.translation()
-        ###rot = xform.getRotation()
         pos = face.worldtransform * face.center                 # dummy start pos
         bpy.ops.mesh.primitive_cube_add(location=pos) #### , rotation=rot)           # frame-like
         bpy.context.object.name = "Cube1"
