@@ -138,13 +138,39 @@ class ImpostorFace :
         print("  Face normal: (%1.4f,%1.4f,%1.4f)" % (self.normal[0],self.normal[1],self.normal[2])) 
         #   Compute bounding box of face.  Use longest edge to orient the bounding box
         #   This will be the area of the image we will take and map onto the face.
+        
         faceplanemat = self.getfaceplanetransform()                                 # transform points onto face
-        faceplanemat.invert()
-        ####pts = [faceplanemat * me.vertices[vid].co for vid in self.vertexids]        # points transformed onto face, now 2D
-        pts = [faceplanemat * vecmult(self.scale,me.vertices[vid].co) for vid in self.vertexids]        # points transformed onto face, now 2D
-        sizex = 2*max(max([pt[0] for pt in pts]), -min([pt[0] for pt in pts]))      # size per max excursion in X
-        sizey = 2*max(max([pt[1] for pt in pts]), -min([pt[1] for pt in pts]))      # size per max excursion in Y
-        self.facebounds = (sizex, sizey)                                            # scaled of bounds
+        faceplanematinv = faceplanemat.copy()
+        faceplanematinv.invert()
+        print(faceplanemat)
+        print(faceplanematinv)
+        pts = [faceplanematinv * me.vertices[vid].co for vid in self.vertexids]        # points transformed onto face, now 2D
+        ####pts = [faceplanemat * vecmult(self.scale,me.vertices[vid].co) for vid in self.vertexids]        # points transformed onto face, now 2D
+        ####  Scaled points did not  have zero Z coord, so not on face plane
+        for pt in pts :                                                             # all points must be on face plane
+            assert abs(pts[0][2]  < 0.01), "Internal error: Vertex not on face plane"   # point must be on face plane
+        minx = min([pt[0] for pt in pts])                                           # size per max excursion in X
+        miny = min([pt[1] for pt in pts])                                           # size per max excursion in X
+        maxx = max([pt[0] for pt in pts])                                           # size per max excursion in X
+        maxy = max([pt[1] for pt in pts])                                           # size per max excursion in X
+        ####sizex = 2*max(max([pt[0] for pt in pts]), -min([pt[0] for pt in pts]))      # size per max excursion in X
+        ####sizey = 2*max(max([pt[1] for pt in pts]), -min([pt[1] for pt in pts]))      # size per max excursion in Y
+        ####self.facebounds = (sizex, sizey)                                            # scaled of bounds
+        #    Compute bounding box in face plane coordinate system
+        lowerleft = mathutils.Vector((minx, miny, 0.0))
+        upperright = mathutils.Vector((maxx, maxy, 0.0))
+        center = (lowerleft + upperright)*0.5
+        newcenter = faceplanemat * center                                           # transform center back to object coords
+        pxx = faceplanematinv * (faceplanemat * self.center) 
+        assert (self.center - pxx).length < 0.001, "Inverse transform failed"
+        #   Compute size
+        self.facebounds = (maxx - minx, maxy - miny)
+        #   Re-center
+        ####newcenter = mathutils.Vector(((maxx + minx)*0.5, (maxy + miny)*0.5, pts[0][2]))  # new center in face coords (all have same Z coord)
+        #   ***NEED TO DESCALE
+        ####newcenter = faceplanemat * newcenter                                      # transform back into object coords
+        print("Old center: %s  New center: %s  In face coords: %s " % (str(self.center), str(newcenter), str(center)))
+        self.center = newcenter                                                     # and use it
         print("Face size, scaled: %f %f" % (self.facebounds))                     # ***TEMP***
         for pt in pts :
             print (pt)                                               ##  ***TEMP***
@@ -261,20 +287,22 @@ class ImpostorMaker(bpy.types.Operator) :
         for f in faces :
             f.dump()
         #   Test by moving camera to look at first face
-        face = faces[0]
-        camera = bpy.data.objects['Camera']
-        bpy.data.cameras['Camera'].type = 'ORTHO'
-        bpy.data.cameras['Camera'].ortho_scale = 4.0
-        #   Add an object to test the transformation
-        pos = face.worldtransform * face.center                 # dummy start pos
-        bpy.ops.mesh.primitive_cube_add(location=pos)
-        bpy.context.object.name = "Cube1"
-        xform = face.getfaceplanetransform()                    # get positioning transform
-        xformworld = face.worldtransform * xform                # in world space
-        bpy.context.object.matrix_world = xformworld            # apply rotation
-        bpy.context.object.scale = mathutils.Vector((face.facebounds[0], face.facebounds[1], 0.1))*0.5                  # apply scale
-        #   Place camera
-        camera.matrix_world = face.getcameratransform()
+        for face in faces:
+            ####face = faces[0]
+            camera = bpy.data.objects['Camera']
+            bpy.data.cameras['Camera'].type = 'ORTHO'
+            bpy.data.cameras['Camera'].ortho_scale = 4.0
+            #   Add an object to test the transformation
+            pos = face.worldtransform * face.center                 # dummy start pos
+            bpy.ops.mesh.primitive_cube_add(location=pos)
+            bpy.context.object.name = "Cube1"
+            xform = face.getfaceplanetransform()                    # get positioning transform
+            xformworld = face.worldtransform * xform                # in world space
+            bpy.context.object.matrix_world = xformworld            # apply rotation
+            bpy.context.object.scale = mathutils.Vector((face.facebounds[0], face.facebounds[1], 0.1))*0.5                  # apply scale
+            #   Place camera
+            camera.matrix_world = face.getcameratransform()
+            break   # only 1st point for now
 
         
         
