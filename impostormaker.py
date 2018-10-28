@@ -124,9 +124,8 @@ class ImpostorFace :
             else :
                 self.normal = cross             # we have a face normal
             #   Find longest, lowest edge. This will be the bottom of the image.
-            ####edgelength = ((v1-v0) * (target.scale)).length  # length of edge
             edge = v1-v0
-            edge = mathutils.Vector((edge[0]*target.scale[0], edge[1]*target.scale[1], edge[2]*target.scale[2])) # There must be a function for this
+            edge = mathutils.Vector((edge[0]*target.scale[0], edge[1]*target.scale[1], edge[2]*target.scale[2])) # there is no mathutils fn for this
             edgelength = edge.length
             if edgelength > baseedgelength :
                 baseedgelength = edgelength     # new winner
@@ -167,6 +166,14 @@ class ImpostorFace :
         camerapos = self.center + self.normal*disttocamera  # location of camera, local coords
         return self.worldtransform * camerapos
         
+    def getcameratransform(self, disttocamera = 5.0) :
+        xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
+        upvec = xvec.cross(self.normal)                                 # up vector
+        orientmat = matrixlookat(self.center, self.center - self.normal, upvec)     # rotation to proper orientation 
+        camerapos = self.center + self.normal*disttocamera              # location of camera, local coords
+        posmat = mathutils.Matrix.Translation(camerapos)
+        return self.worldtransform * (posmat * orientmat)               # camera in world coordinates
+
     def getcameralookat(self) :
         """
         Get look-at point, world coords
@@ -269,8 +276,8 @@ class ImpostorMaker(bpy.types.Operator) :
         camera.location = face.getcameralocation()
         print("Camera location: %s" % (camera.location,))
         looking_direction = camera.location - face.getcameralookat()
-        rot_quat = looking_direction.to_track_quat('Z', 'Y')
-        camera.rotation_euler = rot_quat.to_euler()
+        ####rot_quat = looking_direction.to_track_quat('Z', 'Y')
+        ####camera.rotation_quaternion = rot_quat
         #   Add an object to test the transformation
         #   ***NEEDS WORK***
         pos = face.worldtransform * face.center                 # dummy start pos
@@ -280,6 +287,17 @@ class ImpostorMaker(bpy.types.Operator) :
         xformworld = face.worldtransform * xform                # in world space
         bpy.context.object.matrix_world = xformworld            # apply rotation
         bpy.context.object.scale = (2, 0.5, 0.1)                # apply scale
+        xvec = face.baseedge[1] - face.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
+        upvec = xvec.cross(face.normal)                                 # up vector, target object frame
+        rotquat = matrixlookat(face.worldtransform * face.center, 
+            face.worldtransform * face.center + face.worldtransform * face.normal, 
+            face.worldtransform * upvec).to_quaternion()        # rotation to proper orientation 
+        camera.rotation_quaternion = rotquat                    # apply to camera ***WRONG***
+        #   Place camera
+        ####xformcamera = xformworld
+        ####xformcamera.position = face.getcameralocation() 
+        ####camera.matrix_world = xformworld
+        camera.matrix_world = face.getcameratransform()
 
         
         
