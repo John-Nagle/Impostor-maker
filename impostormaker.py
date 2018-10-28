@@ -278,11 +278,18 @@ class ImpostorMaker(bpy.types.Operator) :
         for f in faces :
             f.dump()
         #   Test by moving camera to look at first face
+        redmatl = bpy.data.materials.get("Red diffuse")
+        if redmatl is None:
+            # create material
+            redmatl = bpy.data.materials.new(name="Red diffuse")
+            redmatl.diffuse_color = (1, 0, 0)
+                 
         for face in faces:
             ####face = faces[0]
             #   Add an object to test the transformation
             pos = face.worldtransform * face.center                 # dummy start pos
             bpy.ops.mesh.primitive_cube_add(location=pos)
+            bpy.context.object.data.materials.append(redmatl)
             bpy.context.object.name = "Cube1"
             xform = face.getfaceplanetransform()                    # get positioning transform
             xformworld = face.worldtransform * xform                # in world space
