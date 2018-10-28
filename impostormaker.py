@@ -55,29 +55,22 @@ def matrixlookat(eye, targetpt, up) :
     # perhaps opentk has z inverse axis
     tran = mathutils.Matrix.Translation(eye)
     return tran * rot
-
-
-def updatecamera(camera, focus_point=mathutils.Vector((0.0, 0.0, 0.0)), distance=10.0):
-    """
-    Focus the camera to a focus point and place the camera at a specific distance from that
-    focus point. The camera stays in a direct line with the focus point.
-
-    :param camera: the camera object
-    :type camera: bpy.types.object
-    :param focus_point: the point to focus on (default=``mathutils.Vector((0.0, 0.0, 0.0))``)
-    :type focus_point: mathutils.Vector
-    :param distance: the distance to keep to the focus point (default=``10.0``)
-    :type distance: float
-    """
-    looking_direction = camera.location - focus_point
-    rot_quat = looking_direction.to_track_quat('Z', 'Y')
-
-    camera.rotation_euler = rot_quat.to_euler()
-    camera.location = rot_quat * mathutils.Vector((0.0, 0.0, distance))
     
+def addtestpoint(pos) :
+    """
+    Add visible small test point for debug
+    """
+    bpy.ops.mesh.primitive_cube_add(location=pos)
+    bpy.context.object.name = "Testpt"
+    bpy.context.object.scale = (0.1,0.1,0.1)                # apply scale
     
+def vecmult(v0, v1) :
+    """
+    Element by element vector multiply, for scaling
+    """
+    return mathutils.Vector((v0[0]*v1[0], v0[1]*v1[1], v0[2]*v1[2]))
 
-####update_camera(bpy.data.objects['Camera'])
+
 
 class ImpostorFace :
     """
@@ -90,8 +83,10 @@ class ImpostorFace :
         self.vertexids = []                 # vertex indices into 
         self.baseedge = None                # (vertID, vertID)
         self.center = None                  # center of face, object coords
+        self.facebounds = None              # size bounds of face, object scale
+        self.scale = target.scale           # scale to world size
         self.worldtransform = target.matrix_world  # transform to global coords
-        assert(target.type == "MESH", "Must be a mesh target")  
+        assert target.type == "MESH", "Must be a mesh target"
         me = target.data                    # mesh info
         vertices = me.vertices
         if poly.loop_total < 3 :            # can't compute a normal
@@ -123,9 +118,10 @@ class ImpostorFace :
                     raise RuntimeError("A face of \"%s\" is not flat." % (target.name,))
             else :
                 self.normal = cross             # we have a face normal
-            #   Find longest, lowest edge. This will be the bottom of the image.
-            edge = v1-v0
-            edge = mathutils.Vector((edge[0]*target.scale[0], edge[1]*target.scale[1], edge[2]*target.scale[2])) # there is no mathutils fn for this
+            #   Find longest edge. This will orient the image.
+            ###edge = v1-v0
+            ###edge = mathutils.Vector((edge[0]*target.scale[0], edge[1]*target.scale[1], edge[2]*target.scale[2])) # there is no mathutils fn for this
+            edge = vecmult(v1 - v0, target.scale)  # element by element multiply
             edgelength = edge.length
             if edgelength > baseedgelength :
                 baseedgelength = edgelength     # new winner
@@ -140,8 +136,20 @@ class ImpostorFace :
         if not self.normal :
             raise RuntimeError("Unable to compute a normal for a face of \"%s\"." % (target.name,)) # degenerate geometry of some kind    
         print("  Face normal: (%1.4f,%1.4f,%1.4f)" % (self.normal[0],self.normal[1],self.normal[2])) 
-        #   Compute bounding box of face.  Use base edge as the bottom of the bounding box.
-        #   This will be the area of the image we will take and map onto the face.  
+        #   Compute bounding box of face.  Use longest edge to orient the bounding box
+        #   This will be the area of the image we will take and map onto the face.
+        faceplanemat = self.getfaceplanetransform()                                 # transform points onto face
+        faceplanemat.invert()
+        ####pts = [faceplanemat * me.vertices[vid].co for vid in self.vertexids]        # points transformed onto face, now 2D
+        pts = [faceplanemat * vecmult(self.scale,me.vertices[vid].co) for vid in self.vertexids]        # points transformed onto face, now 2D
+        sizex = 2*max(max([pt[0] for pt in pts]), -min([pt[0] for pt in pts]))      # size per max excursion in X
+        sizey = 2*max(max([pt[1] for pt in pts]), -min([pt[1] for pt in pts]))      # size per max excursion in Y
+        self.facebounds = (sizex, sizey)                                            # scaled of bounds
+        print("Face size, scaled: %f %f" % (self.facebounds))                     # ***TEMP***
+        for pt in pts :
+            print (pt)                                               ##  ***TEMP***
+        ###for pt in pts :                                                 # ***TEMP***
+        ###    addtestpoint(pt)
         #   ***MORE***
         
     def getfaceplanetransform(self) :
@@ -165,12 +173,6 @@ class ImpostorFace :
         camerapos = self.center + self.normal*disttocamera              # location of camera, local coords
         posmat = mathutils.Matrix.Translation(camerapos)
         return self.worldtransform * (posmat * orientmat)               # camera in world coordinates
-
-    def getcameralookat(self) :
-        """
-        Get look-at point, world coords
-        """
-        return self.worldtransform * self.center
         
     def getcameraorthoscale(self) :
         """
@@ -246,8 +248,7 @@ class ImpostorMaker(bpy.types.Operator) :
         target.data.update()                        # and update the target
         bm.clear()                                  # clean up
         bm.free()
-
-        
+    
     def buildimpostor(self, context, target, sources) :
         print("Target: " + target.name) 
         print("Sources: " + ",".join([obj.name for obj in sources]))  
@@ -266,13 +267,13 @@ class ImpostorMaker(bpy.types.Operator) :
         bpy.data.cameras['Camera'].ortho_scale = 4.0
         #   Add an object to test the transformation
         pos = face.worldtransform * face.center                 # dummy start pos
-        bpy.ops.mesh.primitive_cube_add(location=pos) #### , rotation=rot)           # frame-like
+        bpy.ops.mesh.primitive_cube_add(location=pos)
         bpy.context.object.name = "Cube1"
         xform = face.getfaceplanetransform()                    # get positioning transform
         xformworld = face.worldtransform * xform                # in world space
         bpy.context.object.matrix_world = xformworld            # apply rotation
-        bpy.context.object.scale = (2, 0.5, 0.1)                # apply scale
-       #   Place camera
+        bpy.context.object.scale = mathutils.Vector((face.facebounds[0], face.facebounds[1], 0.1))*0.5                  # apply scale
+        #   Place camera
         camera.matrix_world = face.getcameratransform()
 
         
