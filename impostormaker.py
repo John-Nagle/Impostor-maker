@@ -157,15 +157,7 @@ class ImpostorFace :
         upvec = xvec.cross(self.normal)                                 # up vector
         orientmat = matrixlookat(self.center, self.center + self.normal, upvec)     # rotation to proper orientation 
         return orientmat                                                
-               
-    def getcameralocation(self) :
-        """
-        Get location for camera, world coords
-        """
-        disttocamera = 5.0                                              # ***TEMP***
-        camerapos = self.center + self.normal*disttocamera  # location of camera, local coords
-        return self.worldtransform * camerapos
-        
+                       
     def getcameratransform(self, disttocamera = 5.0) :
         xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
         upvec = xvec.cross(self.normal)                                 # up vector
@@ -272,14 +264,7 @@ class ImpostorMaker(bpy.types.Operator) :
         camera = bpy.data.objects['Camera']
         bpy.data.cameras['Camera'].type = 'ORTHO'
         bpy.data.cameras['Camera'].ortho_scale = 4.0
-        ####camera.type('ORTHO')
-        camera.location = face.getcameralocation()
-        print("Camera location: %s" % (camera.location,))
-        looking_direction = camera.location - face.getcameralookat()
-        ####rot_quat = looking_direction.to_track_quat('Z', 'Y')
-        ####camera.rotation_quaternion = rot_quat
         #   Add an object to test the transformation
-        #   ***NEEDS WORK***
         pos = face.worldtransform * face.center                 # dummy start pos
         bpy.ops.mesh.primitive_cube_add(location=pos) #### , rotation=rot)           # frame-like
         bpy.context.object.name = "Cube1"
@@ -287,16 +272,7 @@ class ImpostorMaker(bpy.types.Operator) :
         xformworld = face.worldtransform * xform                # in world space
         bpy.context.object.matrix_world = xformworld            # apply rotation
         bpy.context.object.scale = (2, 0.5, 0.1)                # apply scale
-        xvec = face.baseedge[1] - face.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
-        upvec = xvec.cross(face.normal)                                 # up vector, target object frame
-        rotquat = matrixlookat(face.worldtransform * face.center, 
-            face.worldtransform * face.center + face.worldtransform * face.normal, 
-            face.worldtransform * upvec).to_quaternion()        # rotation to proper orientation 
-        camera.rotation_quaternion = rotquat                    # apply to camera ***WRONG***
-        #   Place camera
-        ####xformcamera = xformworld
-        ####xformcamera.position = face.getcameralocation() 
-        ####camera.matrix_world = xformworld
+       #   Place camera
         camera.matrix_world = face.getcameratransform()
 
         
