@@ -157,19 +157,26 @@ class ImpostorFace :
         ####sizey = 2*max(max([pt[1] for pt in pts]), -min([pt[1] for pt in pts]))      # size per max excursion in Y
         ####self.facebounds = (sizex, sizey)                                            # scaled of bounds
         #    Compute bounding box in face plane coordinate system
-        lowerleft = mathutils.Vector((minx, miny, 0.0))
-        upperright = mathutils.Vector((maxx, maxy, 0.0))
-        center = (lowerleft + upperright)*0.5
-        newcenter = faceplanemat * center                                           # transform center back to object coords
+        lowerleft = faceplanemat * mathutils.Vector((minx, miny, 0.0))              # we have to transfer these back to obj coords to scale
+        upperright = faceplanemat * mathutils.Vector((maxx, maxy, 0.0))
+        newcenter = (lowerleft + upperright)*0.5                                    # in face coords
+        lowerleft = vecmult(lowerleft, self.scale)                                  # must scale in face coords
+        upperright = vecmult(upperright, self.scale)
+        lowerleft = faceplanematinv * lowerleft
+        upperright = faceplanematinv * upperright
+        width = upperright[0] - lowerleft[0]
+        height = upperright[1] - lowerleft[1]
+        self.facebounds = (width, height)
+        ####newcenter = faceplanemat * center                                           # transform center back to object coords
         pxx = faceplanematinv * (faceplanemat * self.center) 
         assert (self.center - pxx).length < 0.001, "Inverse transform failed"
         #   Compute size
-        self.facebounds = (maxx - minx, maxy - miny)
+        ###self.facebounds = (maxx - minx, maxy - miny)
         #   Re-center
         ####newcenter = mathutils.Vector(((maxx + minx)*0.5, (maxy + miny)*0.5, pts[0][2]))  # new center in face coords (all have same Z coord)
         #   ***NEED TO DESCALE
         ####newcenter = faceplanemat * newcenter                                      # transform back into object coords
-        print("Old center: %s  New center: %s  In face coords: %s " % (str(self.center), str(newcenter), str(center)))
+        print("Old center: %s  New center: %s" % (str(self.center), str(newcenter)))
         self.center = newcenter                                                     # and use it
         print("Face size, scaled: %f %f" % (self.facebounds))                     # ***TEMP***
         for pt in pts :
