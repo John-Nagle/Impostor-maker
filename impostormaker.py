@@ -234,11 +234,15 @@ class ImpostorFace :
         Render to file
         
         ***NEEDS MORE PARAMS***
+        ***NEED TO SAVE CAMERA PARAMS AND RETURN TO NORMAL OR USE A NEW CAMERA***
         """
         height = int(math.ceil((self.facebounds[1] / self.facebounds[0]) * width))      # user sets width, height is just enough for info
         bpy.context.scene.render.filepath = filename
         bpy.context.scene.render.resolution_x = width
         bpy.context.scene.render.resolution_y = height
+        bpy.context.scene.render.image_settings.color_mode = 'RGBA'                     # ask for alpha channel
+        bpy.context.scene.render.alpha_mode = 'TRANSPARENT'                             # transparent background, Blender renderer
+        bpy.context.scene.cycles.film_transparent = True                                # transparent background, Cycles renderer
         bpy.ops.render.render(write_still=True)                    
                     
     def dump(self) :
@@ -329,14 +333,10 @@ class ImpostorMaker(bpy.types.Operator) :
             xformworld = face.worldtransform * xform                # in world space
             bpy.context.object.matrix_world = xformworld            # apply rotation
             bpy.context.object.scale = mathutils.Vector((face.facebounds[0], face.facebounds[1], 0.01))*0.5                  # apply scale
-            ####bpy.context.object.scale = mathutils.Vector((0.01,0.01, 10))                 # apply scale
             #   Place camera
             camera = bpy.data.objects['Camera']
             face.setupcamera(camera, 0.05)
             face.rendertofile("/tmp/impostortest.png", 512)     # take picture
-            ####camera.data.ortho_scale = face.getcameraorthoscale()[0] * 1.05       # width of bounds ***TEMP*** extra 5% for testing
-            ####camera.matrix_world = face.getcameratransform()
-            ####camera.data.type = 'ORTHO'
             break   # only 1st point for now
 
         
