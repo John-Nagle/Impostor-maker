@@ -80,6 +80,14 @@ def gettestmatl(name, color) :
             matl = bpy.data.materials.new(name=name)
             matl.diffuse_color = color
     return matl
+    
+def setnorender(ob, viz):
+    """
+    Set rendering invisibility of object and children
+    """
+    ob.hide_render = viz
+    for child in ob.children :
+        setvisible(child, viz)
 
 
 
@@ -131,8 +139,6 @@ class ImpostorFace :
             else :
                 self.normal = cross             # we have a face normal
             #   Find longest edge. This will orient the image.
-            ###edge = v1-v0
-            ###edge = mathutils.Vector((edge[0]*target.scale[0], edge[1]*target.scale[1], edge[2]*target.scale[2])) # there is no mathutils fn for this
             edge = vecmult(v1 - v0, target.scale)  # element by element multiply
             edgelength = edge.length
             if edgelength > baseedgelength :
@@ -220,12 +226,12 @@ class ImpostorFace :
         """
         return self.edgeids
         
-    def setupcamera(self, camera, margin = 0.0) :
+    def setupcamera(self, camera, dist = 5.0, margin = 0.0) :
         """
         Set camera params
         """
         camera.data.ortho_scale = self.getcameraorthoscale()[0] * (1.0+margin)   # width of bounds, plus debug margin if desired
-        camera.matrix_world = self.getcameratransform()
+        camera.matrix_world = self.getcameratransform(dist)
         camera.data.type = 'ORTHO'
 
         
@@ -325,18 +331,21 @@ class ImpostorMaker(bpy.types.Operator) :
         for face in faces:
             ####face = faces[0]
             #   Add an object to test the transformation
-            pos = face.worldtransform * face.center                 # dummy start pos
-            bpy.ops.mesh.primitive_cube_add(location=pos)
-            bpy.context.object.data.materials.append(redmatl)
-            bpy.context.object.name = "Cube1"
-            xform = face.getfaceplanetransform()                    # get positioning transform
-            xformworld = face.worldtransform * xform                # in world space
-            bpy.context.object.matrix_world = xformworld            # apply rotation
-            bpy.context.object.scale = mathutils.Vector((face.facebounds[0], face.facebounds[1], 0.01))*0.5                  # apply scale
+            if False :
+                pos = face.worldtransform * face.center                 # dummy start pos
+                bpy.ops.mesh.primitive_cube_add(location=pos)
+                bpy.context.object.data.materials.append(redmatl)
+                bpy.context.object.name = "Cube1"
+                xform = face.getfaceplanetransform()                    # get positioning transform
+                xformworld = face.worldtransform * xform                # in world space
+                bpy.context.object.matrix_world = xformworld            # apply rotation
+                bpy.context.object.scale = mathutils.Vector((face.facebounds[0], face.facebounds[1], 0.01))*0.5                  # apply scale
             #   Place camera
             camera = bpy.data.objects['Camera']
-            face.setupcamera(camera, 0.05)
-            face.rendertofile("/tmp/impostortest.png", 512)     # take picture
+            face.setupcamera(camera, 50.0, 0.05)
+            setnorender(target, True)                                   # hide target impostor object during render
+            face.rendertofile("/tmp/impostortest.png", 512)             # take picture
+            setnorender(target, False)
             break   # only 1st point for now
 
         
