@@ -201,18 +201,11 @@ class ImpostorFace :
         """
         xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
         upvec = xvec.cross(self.normal)                                 # up vector
-        ####orientmat = matrixlookat(self.center + self.normal, self.center, upvec)     # rotation to proper orientation 
         orientmat = matrixlookat(mathutils.Vector((0,0,0)), -self.normal, upvec)     # rotation to proper orientation 
         camerapos = self.center + self.normal*disttocamera              # location of camera, object coords
-        ####orientmat = mathutils.Matrix.Identity(4)                     # ***TEMP***
         posmat = mathutils.Matrix.Translation(camerapos)
         return self.worldtransform * (posmat * orientmat)               # camera in world coordinates
-        #   Different approach - worse
-        orientmat = matrixlookat(self.worldtransform * (self.center + self.normal), self.worldtransform * self.center, self.worldtransform * upvec)     # rotation to proper orientation 
-        posmat = mathutils.Matrix.Translation(self.worldtransform * camerapos)
-        return posmat * orientmat                                     # camera in world coordinates
- 
-        
+      
     def getcameraorthoscale(self) :
         """
         Get camera orthographic scale.
@@ -225,7 +218,28 @@ class ImpostorFace :
         """
         Return set of edge tuples for this face
         """
-        return self.edgeids                    
+        return self.edgeids
+        
+    def setupcamera(self, camera, margin = 0.0) :
+        """
+        Set camera params
+        """
+        camera.data.ortho_scale = self.getcameraorthoscale()[0] * (1.0+margin)   # width of bounds, plus debug margin if desired
+        camera.matrix_world = self.getcameratransform()
+        camera.data.type = 'ORTHO'
+
+        
+    def rendertofile(self, filename, width) :
+        """
+        Render to file
+        
+        ***NEEDS MORE PARAMS***
+        """
+        height = int(math.ceil((self.facebounds[1] / self.facebounds[0]) * width))      # user sets width, height is just enough for info
+        bpy.context.scene.render.filepath = filename
+        bpy.context.scene.render.resolution_x = width
+        bpy.context.scene.render.resolution_y = height
+        bpy.ops.render.render(write_still=True)                    
                     
     def dump(self) :
         """
@@ -318,9 +332,11 @@ class ImpostorMaker(bpy.types.Operator) :
             ####bpy.context.object.scale = mathutils.Vector((0.01,0.01, 10))                 # apply scale
             #   Place camera
             camera = bpy.data.objects['Camera']
-            bpy.data.cameras['Camera'].type = 'ORTHO'
-            bpy.data.cameras['Camera'].ortho_scale = face.getcameraorthoscale()[0] * 1.05       # width of bounds ***TEMP*** extra 5% for testing
-            camera.matrix_world = face.getcameratransform()
+            face.setupcamera(camera, 0.05)
+            face.rendertofile("/tmp/impostortest.png", 512)     # take picture
+            ####camera.data.ortho_scale = face.getcameraorthoscale()[0] * 1.05       # width of bounds ***TEMP*** extra 5% for testing
+            ####camera.matrix_world = face.getcameratransform()
+            ####camera.data.type = 'ORTHO'
             break   # only 1st point for now
 
         
