@@ -69,6 +69,18 @@ def vecmult(v0, v1) :
     Element by element vector multiply, for scaling
     """
     return mathutils.Vector((v0[0]*v1[0], v0[1]*v1[1], v0[2]*v1[2]))
+    
+def gettestmatl(name, color) :
+    """
+    Create simple colored material for test objects
+    """
+    matl = bpy.data.materials.get(name)
+    if matl is None:
+        # create material
+            matl = bpy.data.materials.new(name=name)
+            matl.diffuse_color = color
+    return matl
+
 
 
 
@@ -184,12 +196,22 @@ class ImpostorFace :
         return orientmat                                                
                        
     def getcameratransform(self, disttocamera = 5.0) :
+        """
+        Get camera transform, world coordinates
+        """
         xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
         upvec = xvec.cross(self.normal)                                 # up vector
-        orientmat = matrixlookat(self.center + self.normal, self.center, upvec)     # rotation to proper orientation 
+        ####orientmat = matrixlookat(self.center + self.normal, self.center, upvec)     # rotation to proper orientation 
+        orientmat = matrixlookat(mathutils.Vector((0,0,0)), -self.normal, upvec)     # rotation to proper orientation 
         camerapos = self.center + self.normal*disttocamera              # location of camera, object coords
+        ####orientmat = mathutils.Matrix.Identity(4)                     # ***TEMP***
         posmat = mathutils.Matrix.Translation(camerapos)
         return self.worldtransform * (posmat * orientmat)               # camera in world coordinates
+        #   Different approach - worse
+        orientmat = matrixlookat(self.worldtransform * (self.center + self.normal), self.worldtransform * self.center, self.worldtransform * upvec)     # rotation to proper orientation 
+        posmat = mathutils.Matrix.Translation(self.worldtransform * camerapos)
+        return posmat * orientmat                                     # camera in world coordinates
+ 
         
     def getcameraorthoscale(self) :
         """
@@ -278,11 +300,9 @@ class ImpostorMaker(bpy.types.Operator) :
         for f in faces :
             f.dump()
         #   Test by moving camera to look at first face
-        redmatl = bpy.data.materials.get("Red diffuse")
-        if redmatl is None:
-            # create material
-            redmatl = bpy.data.materials.new(name="Red diffuse")
-            redmatl.diffuse_color = (1, 0, 0)
+        redmatl = gettestmatl("Red diffuse", (1, 0, 0))
+        bluematl = gettestmatl("Blue diffuse", (1, 0, 1))
+        greematl = gettestmatl("Blue diffuse", (0, 1, 0))
                  
         for face in faces:
             ####face = faces[0]
@@ -295,6 +315,7 @@ class ImpostorMaker(bpy.types.Operator) :
             xformworld = face.worldtransform * xform                # in world space
             bpy.context.object.matrix_world = xformworld            # apply rotation
             bpy.context.object.scale = mathutils.Vector((face.facebounds[0], face.facebounds[1], 0.01))*0.5                  # apply scale
+            ####bpy.context.object.scale = mathutils.Vector((0.01,0.01, 10))                 # apply scale
             #   Place camera
             camera = bpy.data.objects['Camera']
             bpy.data.cameras['Camera'].type = 'ORTHO'
