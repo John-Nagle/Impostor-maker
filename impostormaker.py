@@ -141,7 +141,7 @@ class ImageLayout :
         self.xpos = 0                               # next starting point, X
         self.ypos = 0                               # next starting point, Y
         self.ymax = 0                               # used this much space
-        pass
+        self.rects = []                             # allocated rectangles
         
     def getrect(self, width, height) :
         """
@@ -150,17 +150,21 @@ class ImageLayout :
         if (width > self.width - 2*self.margin) :
             raise ValueError("Image too large to composite into target image")
         #   Try to fit in current row
-        if self.xpos + width + 2*margin < self.width : # if can fit in this row
-            rect = (self.xpos + width + margin, self.ypos + margin)   # returned corner
-            self.xpos = self.xpos + width + margin  # use up space
-            self.ymax = max(self.ymax, self.ypos + height + margin)
-            return rect
-        #   Must start a new row
-        self.ypos = self.ymax
-        self.xpos = 0
-        rect = (self.xpos + width + margin, self.ypos + margin)   # returned corner
-        self.xpos = self.xpos + width + margin  # use up space
-        self.ymax = max(self.ymax, self.ypos + height + margin)
+        if self.xpos + width + 2*self.margin < self.width : # if can fit in this row
+            ####corner = (self.xpos + width + self.margin, self.ypos + self.margin)   # returned corner
+            corner = (self.xpos + self.margin, self.ypos + self.margin)
+            self.xpos = self.xpos + width + self.margin  # use up space
+            self.ymax = max(self.ymax, self.ypos + height + self.margin)
+        else :
+            #   Must start a new row
+            self.ypos = self.ymax
+            self.xpos = 0
+            ####corner = (self.xpos + width + self.margin, self.ypos + self.margin)   # returned corner
+            corner = (self.xpos + self.margin, self.ypos + self.margin)
+            self.xpos = self.xpos + width + self.margin  # use up space
+            self.ymax = max(self.ymax, self.ypos + height + self.margin)
+        rect = (corner[0], corner[1], corner[0] + width, corner[1] + height)
+        self.rects.append(rect)                     # allocated rectangle
         return rect
             
     def getheight(self) :
@@ -168,6 +172,14 @@ class ImageLayout :
         Return final height of image
         """
         return self.ymax
+        
+    def dump(self) :
+        """
+        Debug use
+        """
+        print("Layout rectangles: ")
+        for rect in self.rects :
+            print("  (%d,%d) - (%d,%d)" % (rect))
         
 
 
@@ -249,7 +261,6 @@ class ImpostorFace :
         #    Compute bounding box in face plane coordinate system
         lowerleft = faceplanemat * mathutils.Vector((minx, miny, 0.0))              # we have to transfer these back to obj coords to scale
         upperright = faceplanemat * mathutils.Vector((maxx, maxy, 0.0))
-        ####newcenter = (lowerleft + upperright)*0.5                                    # in face coords
         lowerleft = vecmult(lowerleft, self.scale)                                  # must scale in face coords
         upperright = vecmult(upperright, self.scale)
         newcenter = (lowerleft + upperright)*0.5                                    # in face coords
@@ -304,6 +315,12 @@ class ImpostorFace :
         Return set of edge tuples for this face
         """
         return self.edgeids
+        
+    def getfacebounds(self) :
+        """
+        Returns width, for sorting
+        """
+        return self.facebounds
         
     def setupcamera(self, camera, dist = 5.0, margin = 0.0) :
         """
@@ -390,6 +407,32 @@ class ImpostorMaker(bpy.types.Operator) :
         target.data.update()                        # and update the target
         bm.clear()                                  # clean up
         bm.free()
+        
+    def layoutcomposite(self, faces, width=512, margin=9) :
+        """
+        Decide where to place faces in composite image
+        """
+        assert len(faces) > 0, "No faces for impostor target"         
+        layout = ImageLayout(width, margin)
+        #   Widest faces first
+        sortedfaces = sorted(faces, key = lambda f : f.getfacebounds()[0], reverse=True)
+        widest = sortedfaces[0].getfacebounds()[0]  # width of widest face
+        scalefactor = (width - 2*margin) / widest     # pixels per unit
+        for face in sortedfaces :
+            width = int(math.floor(face.getfacebounds()[0] * scalefactor))   # width in pixels
+            height = int(math.floor(face.getfacebounds()[1] * scalefactor))   # height in pixels
+            print("Face size in pixels: (%d,%d)" % (width, height)) # ***TEMP***
+            layout.getrect(width, height)           # lay out in layout object
+            
+        layout.dump()                               # ***TEMP***
+        
+        
+    def compositefaces(self, faces) :
+        """
+        Composite list of faces into an image
+        """
+        pass
+        
     
     def buildimpostor(self, context, target, sources) :
         print("Target: " + target.name) 
@@ -402,10 +445,11 @@ class ImpostorMaker(bpy.types.Operator) :
         print("Faces")
         for f in faces :
             f.dump()
+        #   Lay out texture map
+        texmapwidth = 512                                               # ***TEMP***
+        self.layoutcomposite(faces, texmapwidth)                        # lay out, first try
         #   Test by moving camera to look at first face
         redmatl = gettestmatl("Red diffuse", (1, 0, 0))
-        bluematl = gettestmatl("Blue diffuse", (1, 0, 1))
-        greematl = gettestmatl("Blue diffuse", (0, 1, 0))
                  
         for face in faces:
             ####face = faces[0]
