@@ -90,6 +90,85 @@ def setnorender(ob, viz):
         setvisible(child, viz)
 
 
+class ImageComposite :
+    """
+    Image composited from multiple images
+    
+    ***UNTESTED***
+    """
+    CHANNELS = 4                                    # RGBA
+    
+    def __init__(self, name, width, height) :
+        #   RGBA image initialized to black transparent
+        self.image =  bpy.ops.image.new(name=name, width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)       
+        
+    def getimage() :
+        """
+        Return image object
+        """
+        return self.image
+        
+    def paste(self, img, x, y) :
+        """
+        Paste image into indicated position
+        """
+        (inw, inh) = img.size                       # input size of image
+        (outw, outh) = self.image.size              # existing size
+        if (nw + x > outw or inv + y > outh or      # will it fit?
+            x < 0 or y < 0) :
+            raise ValueError("Image paste of (%d,%d) at (%d,%d) into (%d,%d won't fit." % (inw, inh, x, y, outw, outh))  
+        if inw.x == 0 and inw == oldw :             # easy case, full rows
+            start = y*outh*CHANNELS                 # offset into image
+            end = start + inw*inh*CHANNELS
+            self.image.size.pixels[start:end] = img.pixels[:]      # do paste all at once
+        else :                                      # hard case, row by row
+            outpos = (x + y*oldh) * CHANNELS        # start here in old image
+            stride = oldw * CHANNELS      
+            for offset in range(0, inh*stride, stride) : # copy by rows
+                self.image.size.pixels[outpos + offset : inw*CHANNELS] = img.pixels[offset : inw*CHANNELS]       
+        
+class ImageLayout :
+    """
+    Very simple image layout planner
+    
+    Ask for a rectangle, and it fits it in.
+    ***UNTESTED***
+    """
+    
+    def __init__(self, width, margin) :
+        self.width = width
+        self.margin = margin
+        self.xpos = 0                               # next starting point, X
+        self.ypos = 0                               # next starting point, Y
+        self.ymax = 0                               # used this much space
+        pass
+        
+    def getrect(self, width, height) :
+        """
+        Ask for a rectangle, get back starting corner
+        """
+        if (width > self.width - 2*self.margin) :
+            raise ValueError("Image too large to composite into target image")
+        #   Try to fit in current row
+        if self.xpos + width + 2*margin < self.width : # if can fit in this row
+            rect = (self.xpos + width + margin, self.ypos + margin)   # returned corner
+            self.xpos = self.xpos + width + margin  # use up space
+            self.ymax = max(self.ymax, self.ypos + height + margin)
+            return rect
+        #   Must start a new row
+        self.ypos = self.ymax
+        self.xpos = 0
+        rect = (self.xpos + width + margin, self.ypos + margin)   # returned corner
+        self.xpos = self.xpos + width + margin  # use up space
+        self.ymax = max(self.ymax, self.ypos + height + margin)
+        return rect
+            
+    def getheight(self) :
+        """
+        Return final height of image
+        """
+        return self.ymax
+        
 
 
 class ImpostorFace :
