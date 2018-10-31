@@ -367,7 +367,7 @@ class ImpostorFace :
             ####image = bpy.ops.image.new(name="Face render", width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)   # render result goes here
             ####image.open(fd.name)                                                             # load rendered image
             bpy.data.images.load(filename, check_existing=True)
-            print(bpy.data.images.keys())
+            ####print(bpy.data.images.keys())
             imgname = os.path.basename(filename)    # Blender seems to want base name
             image = bpy.data.images[imgname]                                                   # image object
             assert image, "No image object found"
@@ -469,7 +469,9 @@ class ImpostorMaker(bpy.types.Operator) :
             width = rect[2] - rect[0]
             img = face.rendertoimage(width)
             composite.paste(img, rect[0], rect[1])                      # paste into image
-        composite.getimage().save()                                       # save image to file
+        image = composite.getimage()
+        image.filepath = filename
+        image.save()                 # save image to file
                 
     def buildimpostor(self, context, target, sources) :
         print("Target: " + target.name) 
