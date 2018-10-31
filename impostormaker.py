@@ -15,6 +15,7 @@ import bmesh
 import mathutils
 import math
 import tempfile
+import os
 #
 #   Constants
 #
@@ -101,9 +102,10 @@ class ImageComposite :
     
     def __init__(self, name, width, height) :
         #   RGBA image initialized to black transparent
-        self.image =  bpy.ops.image.new(name=name, width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)       
+        bpy.ops.image.new(name=name, width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)  
+        self.image = bpy.data.images[name]          # must get by name    
         
-    def getimage() :
+    def getimage(self) :
         """
         Return image object
         """
@@ -115,18 +117,18 @@ class ImageComposite :
         """
         (inw, inh) = img.size                       # input size of image
         (outw, outh) = self.image.size              # existing size
-        if (nw + x > outw or inv + y > outh or      # will it fit?
+        if (inw + x > outw or inh + y > outh or     # will it fit?
             x < 0 or y < 0) :
-            raise ValueError("Image paste of (%d,%d) at (%d,%d) into (%d,%d won't fit." % (inw, inh, x, y, outw, outh))  
-        if inw.x == 0 and inw == oldw :             # easy case, full rows
-            start = y*outh*CHANNELS                 # offset into image
-            end = start + inw*inh*CHANNELS
+            raise ValueError("Image paste of (%d,%d) at (%d,%d) into (%d,%d) won't fit." % (inw, inh, x, y, outw, outh))  
+        if x == 0 and inw == outw :                 # easy case, full rows
+            start = y*outh*ImageComposite.CHANNELS                 # offset into image
+            end = start + inw*inh*ImageComposite.ImageComposite.CHANNELS
             self.image.size.pixels[start:end] = img.pixels[:]      # do paste all at once
         else :                                      # hard case, row by row
-            outpos = (x + y*oldh) * CHANNELS        # start here in old image
-            stride = oldw * CHANNELS      
+            outpos = (x + y*outh) * ImageComposite.CHANNELS        # start here in old image
+            stride = outw * ImageComposite.CHANNELS      
             for offset in range(0, inh*stride, stride) : # copy by rows
-                self.image.size.pixels[outpos + offset : inw*CHANNELS] = img.pixels[offset : inw*CHANNELS]       
+                self.image.size.pixels[outpos + offset : inw*ImageComposite.CHANNELS] = img.pixels[offset : inw*CHANNELS]       
         
 class ImageLayout :
     """
@@ -359,11 +361,16 @@ class ImpostorFace :
         """
         with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP2-', delete=True) as fd :       # create temp file for render
             filename = fd.name
+            print("Temp file: %s" % (filename,))
             ####filename = "/tmp/testonly.png"  # ***TEMP***
             (width, height) = self.rendertofile(filename, width)                                 # render into temp file
             ####image = bpy.ops.image.new(name="Face render", width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)   # render result goes here
             ####image.open(fd.name)                                                             # load rendered image
-            image = bpy.data.images.load(filename, check_existing=True)
+            bpy.data.images.load(filename, check_existing=True)
+            print(bpy.data.images.keys())
+            imgname = os.path.basename(filename)    # Blender seems to want base name
+            image = bpy.data.images[imgname]                                                   # image object
+            assert image, "No image object found"
             ####image.view_all()    # show for debug
         return image
                          
@@ -462,11 +469,8 @@ class ImpostorMaker(bpy.types.Operator) :
             width = rect[2] - rect[0]
             img = face.rendertoimage(width)
             composite.paste(img, rect[0], rect[1])                      # paste into image
-        composite.getimage.save()                                       # save image to file
-            
-
-        
-    
+        composite.getimage().save()                                       # save image to file
+                
     def buildimpostor(self, context, target, sources) :
         print("Target: " + target.name) 
         print("Sources: " + ",".join([obj.name for obj in sources]))  
