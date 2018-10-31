@@ -119,16 +119,23 @@ class ImageComposite :
         (outw, outh) = self.image.size              # existing size
         if (inw + x > outw or inh + y > outh or     # will it fit?
             x < 0 or y < 0) :
-            raise ValueError("Image paste of (%d,%d) at (%d,%d) into (%d,%d) won't fit." % (inw, inh, x, y, outw, outh))  
+            raise ValueError("Image paste of (%d,%d) at (%d,%d) into (%d,%d), won't fit." % (inw, inh, x, y, outw, outh))  
+        print("Pasting (%d,%d) at (%d,%d) into (%d,%d), input length %d, output length %d." % (inw, inh, x, y, outw, outh, len(img.pixels), len(self.image.pixels)))  # ***TEMP***
         if x == 0 and inw == outw :                 # easy case, full rows
             start = y*outh*ImageComposite.CHANNELS                 # offset into image
             end = start + inw*inh*ImageComposite.ImageComposite.CHANNELS
-            self.image.size.pixels[start:end] = img.pixels[:]      # do paste all at once
+            print("Paste image to %d:%d length %d" % (start, end, len(img.pixels)))   # ***TEMP***
+            self.image.pixels[start:end] = img.pixels[:]      # do paste all at once
         else :                                      # hard case, row by row
             outpos = (x + y*outh) * ImageComposite.CHANNELS        # start here in old image
-            stride = outw * ImageComposite.CHANNELS      
+            stride = outw * ImageComposite.CHANNELS    
+            instart = 0  
             for offset in range(0, inh*stride, stride) : # copy by rows
-                self.image.size.pixels[outpos + offset : inw*ImageComposite.CHANNELS] = img.pixels[offset : inw*CHANNELS]       
+                start = outpos + offset
+                end = start + inw*ImageComposite.CHANNELS 
+                print("Paste row to %d:%d from %d:%d" % (start, end, instart, instart+inw*ImageComposite.CHANNELS))   # ***TEMP***
+                self.image.pixels[start : end] = img.pixels[instart : instart+inw*ImageComposite.CHANNELS]
+                instart = instart + inw*ImageComposite.CHANNELS 
         
 class ImageLayout :
     """
@@ -344,6 +351,7 @@ class ImpostorFace :
         
         ***NEEDS MORE PARAMS***
         ***NEED TO SAVE CAMERA PARAMS AND RETURN TO NORMAL OR USE A NEW CAMERA***
+        ***NEED TO WORK OUT FILENAME/OBJECT NAME UNIQUENESS ISSUES***
         """
         height = int(math.ceil((self.facebounds[1] / self.facebounds[0]) * width))      # user sets width, height is just enough for info
         bpy.context.scene.render.filepath = filename
@@ -359,7 +367,8 @@ class ImpostorFace :
         """
         Render to new image object
         """
-        with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP2-', delete=True) as fd :       # create temp file for render
+        #    ***TEMP*** not deleting
+        with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP2-', delete=False) as fd :       # create temp file for render
             filename = fd.name
             print("Temp file: %s" % (filename,))
             ####filename = "/tmp/testonly.png"  # ***TEMP***
@@ -463,7 +472,9 @@ class ImpostorMaker(bpy.types.Operator) :
         (width, height) = layout.getsize()                              # final image dimensions
         rects = layout.getrects()
         composite = ImageComposite(filename, width, height)
+        print("Pasting...") # ***TEMP***
         for i in range(len(faces)) :
+            print("Pasting face %d" % (i,)) # ***TEMP***
             face = faces[i]
             rect = rects[i]
             width = rect[2] - rect[0]
