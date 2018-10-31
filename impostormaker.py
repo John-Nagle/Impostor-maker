@@ -14,6 +14,7 @@ import bpy
 import bmesh
 import mathutils
 import math
+import tempfile
 #
 #   Constants
 #
@@ -151,7 +152,6 @@ class ImageLayout :
             raise ValueError("Image too large to composite into target image")
         #   Try to fit in current row
         if self.xpos + width + 2*self.margin < self.width : # if can fit in this row
-            ####corner = (self.xpos + width + self.margin, self.ypos + self.margin)   # returned corner
             corner = (self.xpos + self.margin, self.ypos + self.margin)
             self.xpos = self.xpos + width + self.margin  # use up space
             self.ymax = max(self.ymax, self.ypos + height + self.margin)
@@ -159,7 +159,6 @@ class ImageLayout :
             #   Must start a new row
             self.ypos = self.ymax
             self.xpos = 0
-            ####corner = (self.xpos + width + self.margin, self.ypos + self.margin)   # returned corner
             corner = (self.xpos + self.margin, self.ypos + self.margin)
             self.xpos = self.xpos + width + self.margin  # use up space
             self.ymax = max(self.ymax, self.ypos + height + self.margin)
@@ -167,11 +166,17 @@ class ImageLayout :
         self.rects.append(rect)                     # allocated rectangle
         return rect
             
-    def getheight(self) :
+    def getsize(self) :
         """
-        Return final height of image
+        Return final size of image
         """
-        return self.ymax
+        return (self.width, self.ymax)
+        
+    def getrects(self) :
+        """
+        Return list of rects
+        """
+        return self.rects       
         
     def dump(self) :
         """
@@ -345,7 +350,23 @@ class ImpostorFace :
         bpy.context.scene.render.image_settings.color_mode = 'RGBA'                     # ask for alpha channel
         bpy.context.scene.render.alpha_mode = 'TRANSPARENT'                             # transparent background, Blender renderer
         bpy.context.scene.cycles.film_transparent = True                                # transparent background, Cycles renderer
-        bpy.ops.render.render(write_still=True)                    
+        bpy.ops.render.render(write_still=True) 
+        return (width, height)     
+        
+    def rendertoimage(self, width) :
+        """
+        Render to new image object
+        """
+        with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP2-', delete=True) as fd :       # create temp file for render
+            filename = fd.name
+            ####filename = "/tmp/testonly.png"  # ***TEMP***
+            (width, height) = self.rendertofile(filename, width)                                 # render into temp file
+            ####image = bpy.ops.image.new(name="Face render", width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)   # render result goes here
+            ####image.open(fd.name)                                                             # load rendered image
+            image = bpy.data.images.load(filename, check_existing=True)
+            ####image.view_all()    # show for debug
+        return image
+                         
                     
     def dump(self) :
         """
@@ -355,7 +376,7 @@ class ImpostorFace :
             (len(self.vertexids), self.normal[0], self.normal[1], self.normal[2], self.center[0], self.center[1], self.center[2])) 
     
 
-
+    
 class ImpostorMaker(bpy.types.Operator) :
     """Impostor maker"""                # blender will use this as a tooltip for menu items and buttons.
     #   Class static variables
@@ -408,7 +429,7 @@ class ImpostorMaker(bpy.types.Operator) :
         bm.clear()                                  # clean up
         bm.free()
         
-    def layoutcomposite(self, faces, width=512, margin=9) :
+    def layoutcomposite(self, filename, faces, width=512, margin=9) :
         """
         Decide where to place faces in composite image
         """
@@ -425,13 +446,25 @@ class ImpostorMaker(bpy.types.Operator) :
             layout.getrect(width, height)           # lay out in layout object
             
         layout.dump()                               # ***TEMP***
+        outimg = self.compositefaces(filename, sortedfaces, layout)
         
         
-    def compositefaces(self, faces) :
+    def compositefaces(self, filename, faces, layout) :
         """
         Composite list of faces into an image
         """
-        pass
+        (width, height) = layout.getsize()                              # final image dimensions
+        rects = layout.getrects()
+        composite = ImageComposite(filename, width, height)
+        for i in range(len(faces)) :
+            face = faces[i]
+            rect = rects[i]
+            width = rect[2] - rect[0]
+            img = face.rendertoimage(width)
+            composite.paste(img, rect[0], rect[1])                      # paste into image
+        composite.getimage.save()                                       # save image to file
+            
+
         
     
     def buildimpostor(self, context, target, sources) :
@@ -447,7 +480,7 @@ class ImpostorMaker(bpy.types.Operator) :
             f.dump()
         #   Lay out texture map
         texmapwidth = 512                                               # ***TEMP***
-        self.layoutcomposite(faces, texmapwidth)                        # lay out, first try
+        self.layoutcomposite("/tmp/compositetest.png", faces, texmapwidth)                        # lay out, first try
         #   Test by moving camera to look at first face
         redmatl = gettestmatl("Red diffuse", (1, 0, 0))
                  
@@ -468,6 +501,7 @@ class ImpostorMaker(bpy.types.Operator) :
             face.setupcamera(camera, 50.0, 0.05)
             setnorender(target, True)                                   # hide target impostor object during render
             face.rendertofile("/tmp/impostortest.png", 512)             # take picture
+            img = face.rendertoimage(512)
             setnorender(target, False)
             break   # only 1st point for now
 
