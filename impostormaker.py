@@ -83,6 +83,20 @@ def gettestmatl(name, color) :
             matl.diffuse_color = color
     return matl
     
+def pixelcount(image) :
+    """
+    Count nonzero non-1 pixels in image.
+    Debug use only - very slow.
+    """
+    pixcount = 0                  # is there any data in this image?
+    pixels = image.pixels[:]
+    print("Starting pixelcount: %d pixels." % (len(pixels),))
+    for i in range(len(pixels)) :
+        pixel = pixels[i]
+        if (pixel > 0.0 and  pixel < 1.0) :
+            pixcount = pixcount + 1
+    return pixcount
+    
 def setnorender(ob, viz):
     """
     Set rendering invisibility of object and children
@@ -115,12 +129,15 @@ class ImageComposite :
         """
         Paste image into indicated position
         """
+        print("Pixel count in source image: %d" % (pixelcount(img),)) # ***TEMP***
         (inw, inh) = img.size                       # input size of image
         (outw, outh) = self.image.size              # existing size
         if (inw + x > outw or inh + y > outh or     # will it fit?
             x < 0 or y < 0) :
             raise ValueError("Image paste of (%d,%d) at (%d,%d) into (%d,%d), won't fit." % (inw, inh, x, y, outw, outh))  
         print("Pasting (%d,%d) at (%d,%d) into (%d,%d), input length %d, output length %d." % (inw, inh, x, y, outw, outh, len(img.pixels), len(self.image.pixels)))  # ***TEMP***
+        for pixel in img.pixels[0:100] :
+            print("Pixel: %d" % (pixel,))           # ***TEMP***
         if x == 0 and inw == outw :                 # easy case, full rows
             start = y*outh*ImageComposite.CHANNELS                 # offset into image
             end = start + inw*inh*ImageComposite.ImageComposite.CHANNELS
@@ -136,6 +153,7 @@ class ImageComposite :
                 print("Paste row to %d:%d from %d:%d" % (start, end, instart, instart+inw*ImageComposite.CHANNELS))   # ***TEMP***
                 self.image.pixels[start : end] = img.pixels[instart : instart+inw*ImageComposite.CHANNELS]
                 instart = instart + inw*ImageComposite.CHANNELS 
+        print("Pixel count in composite image: %d" % (pixelcount(self.image),)) # ***TEMP***
         
 class ImageLayout :
     """
@@ -368,7 +386,7 @@ class ImpostorFace :
         Render to new image object
         """
         #    ***TEMP*** not deleting
-        with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP2-', delete=False) as fd :       # create temp file for render
+        with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=False) as fd :       # create temp file for render
             filename = fd.name
             print("Temp file: %s" % (filename,))
             ####filename = "/tmp/testonly.png"  # ***TEMP***
@@ -380,6 +398,9 @@ class ImpostorFace :
             imgname = os.path.basename(filename)    # Blender seems to want base name
             image = bpy.data.images[imgname]                                                   # image object
             assert image, "No image object found"
+            image.reload()                  # try to get pixels from render into memory
+            pixcount = pixelcount(image)
+            print("Reloaded %s - %d pixels are nonzero." % (imgname, pixcount)) # ***TEMP***
             ####image.view_all()    # show for debug
         return image
                          
@@ -472,6 +493,7 @@ class ImpostorMaker(bpy.types.Operator) :
         (width, height) = layout.getsize()                              # final image dimensions
         rects = layout.getrects()
         composite = ImageComposite(filename, width, height)
+        composite.getimage().filepath = filename
         print("Pasting...") # ***TEMP***
         for i in range(len(faces)) :
             print("Pasting face %d" % (i,)) # ***TEMP***
@@ -481,8 +503,16 @@ class ImpostorMaker(bpy.types.Operator) :
             img = face.rendertoimage(width)
             composite.paste(img, rect[0], rect[1])                      # paste into image
         image = composite.getimage()
-        image.filepath = filename
+        print("Composited %s - %d pixels are nonzero." % (filename, pixelcount(image))) # ***TEMP***
+        pixelcopy1 = image.pixels[:]                                    # ***TEMP***
+        print("Filepath change %s - %d pixels are nonzero." % (filename, pixelcount(image))) # ***TEMP***
+        ####image.filepath = filename
         image.save()                 # save image to file
+        print("Saved %s - %d pixels are nonzero." % (filename, pixelcount(image))) # ***TEMP***
+        pixelcopy2 = image.pixels[:]
+        for i in range(len(pixelcopy1)) :
+            assert pixelcopy1[i] == pixelcopy2[i], "Pixel changed by save at index %d" %(i,)
+
                 
     def buildimpostor(self, context, target, sources) :
         print("Target: " + target.name) 
