@@ -368,7 +368,7 @@ class ImpostorFace :
         camera.data.type = 'ORTHO'
 
         
-    def rendertofile(self, filename, width) :
+    def rendertofile(self, filename, width, height) :
         """
         Render to file
         
@@ -387,9 +387,8 @@ class ImpostorFace :
         bpy.context.scene.render.alpha_mode = 'TRANSPARENT'                             # transparent background, Blender renderer
         bpy.context.scene.cycles.film_transparent = True                                # transparent background, Cycles renderer
         bpy.ops.render.render(write_still=True) 
-        return (width, height)     
         
-    def rendertoimage(self, width) :
+    def rendertoimage(self, width, height) :
         """
         Render to new image object
         """
@@ -397,7 +396,7 @@ class ImpostorFace :
         with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=False) as fd :       # create temp file for render
             filename = fd.name
             ####filename = "/tmp/testonly.png"  # ***TEMP***
-            (width, height) = self.rendertofile(filename, width)                                 # render into temp file
+            self.rendertofile(filename, width, height)                                 # render into temp file
             print("Temp file: %s  (%d,%d)" % (filename, width, height))
             ####image = bpy.ops.image.new(name="Face render", width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)   # render result goes here
             ####image.open(fd.name)                                                             # load rendered image
@@ -512,7 +511,9 @@ class ImpostorMaker(bpy.types.Operator) :
             face = faces[i]
             rect = rects[i]
             width = rect[2] - rect[0]
-            img = face.rendertoimage(width)
+            height = rect[3] - rect[1]
+            print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
+            img = face.rendertoimage(width, height)
             composite.paste(img, rect[0], rect[1])                      # paste into image
             if (i == 2) : ## ***TEMP DEBUG***
                 break
@@ -542,14 +543,14 @@ class ImpostorMaker(bpy.types.Operator) :
         #   Lay out texture map
         texmapwidth = 512                                               # ***TEMP***
         self.layoutcomposite("/tmp/compositetestb.png", faces, texmapwidth)                        # lay out, first try
-        return # ***TEMP***
+        ####return # ***TEMP***
         #   Test by moving camera to look at first face
         redmatl = gettestmatl("Red diffuse", (1, 0, 0))
                  
         for face in faces:
             ####face = faces[0]
             #   Add an object to test the transformation
-            if False :
+            if True :
                 pos = face.worldtransform * face.center                 # dummy start pos
                 bpy.ops.mesh.primitive_cube_add(location=pos)
                 bpy.context.object.data.materials.append(redmatl)
@@ -558,6 +559,8 @@ class ImpostorMaker(bpy.types.Operator) :
                 xformworld = face.worldtransform * xform                # in world space
                 bpy.context.object.matrix_world = xformworld            # apply rotation
                 bpy.context.object.scale = mathutils.Vector((face.facebounds[0], face.facebounds[1], 0.01))*0.5                  # apply scale
+        return
+        if False :  # ***TEMP*** old test code
             #   Place camera
             camera = bpy.data.objects['Camera']
             face.setupcamera(camera, 5.0, 0.05)
