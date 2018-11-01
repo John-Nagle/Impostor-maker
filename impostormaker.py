@@ -114,10 +114,15 @@ class ImageComposite :
     """
     CHANNELS = 4                                    # RGBA
     
-    def __init__(self, name, width, height) :
+    def __init__(self, filepath, width, height) :
         #   RGBA image initialized to black transparent
+        name = os.path.splitext(os.path.basename(filepath))[0]          # name without path
+        if not name :
+            raise ValueError("Invalid file name for composite: \"%s\"" % (filename,))
         bpy.ops.image.new(name=name, width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)  
-        self.image = bpy.data.images[name]          # must get by name    
+        self.image = bpy.data.images[name]          # must get by name
+        assert self.image, "ImageComposite image not stored properly" 
+        self.image.filepath = filepath              # will be saved here  
         
     def getimage(self) :
         """
@@ -136,24 +141,24 @@ class ImageComposite :
             x < 0 or y < 0) :
             raise ValueError("Image paste of (%d,%d) at (%d,%d) into (%d,%d), won't fit." % (inw, inh, x, y, outw, outh))  
         print("Pasting (%d,%d) at (%d,%d) into (%d,%d), input length %d, output length %d." % (inw, inh, x, y, outw, outh, len(img.pixels), len(self.image.pixels)))  # ***TEMP***
-        for pixel in img.pixels[0:100] :
-            print("Pixel: %d" % (pixel,))           # ***TEMP***
+        ####for pixel in img.pixels[0:100] :
+        ####    print("Pixel: %d" % (pixel,))           # ***TEMP***
         if x == 0 and inw == outw :                 # easy case, full rows
-            start = y*outh*ImageComposite.CHANNELS                 # offset into image
+            start = y*outw*ImageComposite.CHANNELS                 # offset into image
             end = start + inw*inh*ImageComposite.ImageComposite.CHANNELS
             print("Paste image to %d:%d length %d" % (start, end, len(img.pixels)))   # ***TEMP***
             self.image.pixels[start:end] = img.pixels[:]      # do paste all at once
         else :                                      # hard case, row by row
-            outpos = (x + y*outh) * ImageComposite.CHANNELS        # start here in old image
+            outpos = (x + y*outw) * ImageComposite.CHANNELS        # start here in old image
             stride = outw * ImageComposite.CHANNELS    
             instart = 0  
             for offset in range(0, inh*stride, stride) : # copy by rows
                 start = outpos + offset
                 end = start + inw*ImageComposite.CHANNELS 
-                print("Paste row to %d:%d from %d:%d" % (start, end, instart, instart+inw*ImageComposite.CHANNELS))   # ***TEMP***
+                ####print("Paste row to %d:%d from %d:%d" % (start, end, instart, instart+inw*ImageComposite.CHANNELS))   # ***TEMP***
                 self.image.pixels[start : end] = img.pixels[instart : instart+inw*ImageComposite.CHANNELS]
                 instart = instart + inw*ImageComposite.CHANNELS 
-        print("Pixel count in composite image: %d" % (pixelcount(self.image),)) # ***TEMP***
+        ####print("Pixel count in composite image: %d" % (pixelcount(self.image),)) # ***TEMP***
         
 class ImageLayout :
     """
@@ -493,7 +498,7 @@ class ImpostorMaker(bpy.types.Operator) :
         (width, height) = layout.getsize()                              # final image dimensions
         rects = layout.getrects()
         composite = ImageComposite(filename, width, height)
-        composite.getimage().filepath = filename
+        ####composite.getimage().filepath = filename
         print("Pasting...") # ***TEMP***
         for i in range(len(faces)) :
             print("Pasting face %d" % (i,)) # ***TEMP***
@@ -528,6 +533,7 @@ class ImpostorMaker(bpy.types.Operator) :
         #   Lay out texture map
         texmapwidth = 512                                               # ***TEMP***
         self.layoutcomposite("/tmp/compositetest.png", faces, texmapwidth)                        # lay out, first try
+        return # ***TEMP***
         #   Test by moving camera to look at first face
         redmatl = gettestmatl("Red diffuse", (1, 0, 0))
                  
@@ -545,7 +551,7 @@ class ImpostorMaker(bpy.types.Operator) :
                 bpy.context.object.scale = mathutils.Vector((face.facebounds[0], face.facebounds[1], 0.01))*0.5                  # apply scale
             #   Place camera
             camera = bpy.data.objects['Camera']
-            face.setupcamera(camera, 50.0, 0.05)
+            face.setupcamera(camera, 5.0, 0.05)
             setnorender(target, True)                                   # hide target impostor object during render
             face.rendertofile("/tmp/impostortest.png", 512)             # take picture
             img = face.rendertoimage(512)
