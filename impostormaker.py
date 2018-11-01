@@ -214,7 +214,7 @@ class ImageLayout :
         """
         Debug use
         """
-        print("Layout rectangles: ")
+        print("Layout size (%d,%d) Rectangles: " % (self.getsize()))
         for rect in self.rects :
             print("  (%d,%d) - (%d,%d)" % (rect))
         
@@ -376,10 +376,11 @@ class ImpostorFace :
         ***NEED TO SAVE CAMERA PARAMS AND RETURN TO NORMAL OR USE A NEW CAMERA***
         ***NEED TO WORK OUT FILENAME/OBJECT NAME UNIQUENESS ISSUES***
         """
-        height = int(math.ceil((self.facebounds[1] / self.facebounds[0]) * width))      # user sets width, height is just enough for info
+        height = int(math.floor((self.facebounds[1] / self.facebounds[0]) * width))     # user sets width, height is just enough for info
         bpy.context.scene.render.filepath = filename
         bpy.context.scene.render.resolution_x = width
         bpy.context.scene.render.resolution_y = height
+        bpy.context.scene.render.resolution_percentage = 100                            # mandatory, or we get undersized output
         bpy.context.scene.render.image_settings.color_mode = 'RGBA'                     # ask for alpha channel
         bpy.context.scene.render.alpha_mode = 'TRANSPARENT'                             # transparent background, Blender renderer
         bpy.context.scene.cycles.film_transparent = True                                # transparent background, Cycles renderer
@@ -393,9 +394,9 @@ class ImpostorFace :
         #    ***TEMP*** not deleting
         with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=False) as fd :       # create temp file for render
             filename = fd.name
-            print("Temp file: %s" % (filename,))
             ####filename = "/tmp/testonly.png"  # ***TEMP***
             (width, height) = self.rendertofile(filename, width)                                 # render into temp file
+            print("Temp file: %s  (%d,%d)" % (filename, width, height))
             ####image = bpy.ops.image.new(name="Face render", width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)   # render result goes here
             ####image.open(fd.name)                                                             # load rendered image
             bpy.data.images.load(filename, check_existing=True)
@@ -403,7 +404,11 @@ class ImpostorFace :
             imgname = os.path.basename(filename)    # Blender seems to want base name
             image = bpy.data.images[imgname]                                                   # image object
             assert image, "No image object found"
+            assert image.size[0] == width, "Width different after render"
+            assert image.size[1] == height, "Width different after render"
             image.reload()                  # try to get pixels from render into memory
+            assert image.size[0] == width, "Width different after reload"
+            assert image.size[1] == height, "Width different after reload"
             pixcount = pixelcount(image)
             print("Reloaded %s - %d pixels are nonzero." % (imgname, pixcount)) # ***TEMP***
             ####image.view_all()    # show for debug
@@ -532,7 +537,7 @@ class ImpostorMaker(bpy.types.Operator) :
             f.dump()
         #   Lay out texture map
         texmapwidth = 512                                               # ***TEMP***
-        self.layoutcomposite("/tmp/compositetest.png", faces, texmapwidth)                        # lay out, first try
+        self.layoutcomposite("/tmp/compositetesta.png", faces, texmapwidth)                        # lay out, first try
         return # ***TEMP***
         #   Test by moving camera to look at first face
         redmatl = gettestmatl("Red diffuse", (1, 0, 0))
