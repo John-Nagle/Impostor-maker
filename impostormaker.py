@@ -380,6 +380,8 @@ class ImpostorFace :
         bpy.context.scene.render.filepath = filename
         bpy.context.scene.render.resolution_x = width
         bpy.context.scene.render.resolution_y = height
+        bpy.context.scene.render.pixel_aspect_x = 1.0
+        bpy.context.scene.render.pixel_aspect_y = 1.0
         bpy.context.scene.render.resolution_percentage = 100                            # mandatory, or we get undersized output
         bpy.context.scene.render.image_settings.color_mode = 'RGBA'                     # ask for alpha channel
         bpy.context.scene.render.alpha_mode = 'TRANSPARENT'                             # transparent background, Blender renderer
@@ -512,6 +514,8 @@ class ImpostorMaker(bpy.types.Operator) :
             width = rect[2] - rect[0]
             img = face.rendertoimage(width)
             composite.paste(img, rect[0], rect[1])                      # paste into image
+            if (i == 2) : ## ***TEMP DEBUG***
+                break
         image = composite.getimage()
         print("Composited %s - %d pixels are nonzero." % (filename, pixelcount(image))) # ***TEMP***
         pixelcopy1 = image.pixels[:]                                    # ***TEMP***
@@ -537,7 +541,7 @@ class ImpostorMaker(bpy.types.Operator) :
             f.dump()
         #   Lay out texture map
         texmapwidth = 512                                               # ***TEMP***
-        self.layoutcomposite("/tmp/compositetesta.png", faces, texmapwidth)                        # lay out, first try
+        self.layoutcomposite("/tmp/compositetestb.png", faces, texmapwidth)                        # lay out, first try
         return # ***TEMP***
         #   Test by moving camera to look at first face
         redmatl = gettestmatl("Red diffuse", (1, 0, 0))
