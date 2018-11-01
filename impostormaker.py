@@ -229,11 +229,15 @@ class ImpostorFace :
     def __init__(self, context, target, poly) :
         self.normal = None                  # normal in object coords
         self.vertexids = []                 # vertex indices into 
+        self.scaledverts = []               # vertices in object frame after scaling
         self.baseedge = None                # (vertID, vertID)
         self.center = None                  # center of face, object coords
         self.facebounds = None              # size bounds of face, world scale
-        self.scale = target.scale           # scale to world size
-        self.worldtransform = target.matrix_world  # transform to global coords
+        self.scale = (1.0,1.0,1.0)           # scale to world size
+        rot = (target.matrix_world.to_3x3().normalized()).to_4x4() # rotation only
+        trans = mathutils.Matrix.Translation(target.matrix_world.to_translation())
+        self.worldtransform = trans * rot   # transform to global coords
+        ####self.worldtransform = target.matrix_world  # transform to global coords
         assert target.type == "MESH", "Must be a mesh target"
         me = target.data                    # mesh info
         vertices = me.vertices
@@ -250,10 +254,11 @@ class ImpostorFace :
             vid2 = meloop[(loop_index + 2) % poly.loop_total].vertex_index # next, circularly
             ####print("    Loop index %d: Vertex indices: %d %d %d" % (loop_index, vid0, vid1, vid2))  
             #   Get two successive edges to get a normal for the face              
-            v0 = me.vertices[vid0].co       # get 3 points, wrapping around
-            v1 = me.vertices[vid1].co
-            v2 = me.vertices[vid2].co
-            self.vertexids.append(vid0)     # save edge index
+            v0 = vecmult(target.scale, me.vertices[vid0].co)       # get 3 points, wrapping around
+            v1 = vecmult(target.scale, me.vertices[vid1].co)
+            v2 = vecmult(target.scale, me.vertices[vid2].co)
+            self.vertexids.append(vid0)     # save vertex
+            self.scaledverts.append(v0)     # save vertex loc, scaled
             print("    Vertex: %d: (%1.4f,%1.4f,%1.4f)" % (vid0, v0[0],v0[1],v0[2]))
             cross = (v1-v0).cross(v2-v1)    # direction of normal
             #### print("   Cross: " + str(cross))
@@ -267,7 +272,7 @@ class ImpostorFace :
             else :
                 self.normal = cross             # we have a face normal
             #   Find longest edge. This will orient the image.
-            edge = vecmult(v1 - v0, target.scale)  # element by element multiply
+            edge = v1 - v0                      # element by element multiply
             edgelength = edge.length
             if edgelength > baseedgelength :
                 baseedgelength = edgelength     # new winner
@@ -288,7 +293,8 @@ class ImpostorFace :
         faceplanemat = self.getfaceplanetransform()                                 # transform object points onto face plane
         faceplanematinv = faceplanemat.copy()
         faceplanematinv.invert()                                                    # transform face plane back to object points
-        pts = [faceplanematinv * me.vertices[vid].co for vid in self.vertexids]     # points transformed onto face, now 2D
+        ####pts = [faceplanematinv * me.vertices[vid].co for vid in self.vertexids]     # points transformed onto face, now 2D
+        pts = [faceplanematinv * vert for vert in self.scaledverts]                 # vertices transformed onto face, now 2D
         for pt in pts :                                                             # all points must be on face plane
             assert abs(pts[0][2]  < 0.01), "Internal error: Vertex not on face plane"   # point must be on face plane
         minx = min([pt[0] for pt in pts])                                           # size per max excursion in X
@@ -334,6 +340,7 @@ class ImpostorFace :
         """
         xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
         upvec = xvec.cross(self.normal)                                 # up vector
+        print("Getcameratransform: upvec: %s, normal: %s" % (upvec, self.normal))
         orientmat = matrixlookat(mathutils.Vector((0,0,0)), -self.normal, upvec)     # rotation to proper orientation 
         camerapos = self.center + self.normal*disttocamera              # location of camera, object coords
         posmat = mathutils.Matrix.Translation(camerapos)
@@ -405,11 +412,12 @@ class ImpostorFace :
             imgname = os.path.basename(filename)    # Blender seems to want base name
             image = bpy.data.images[imgname]                                                   # image object
             assert image, "No image object found"
-            assert image.size[0] == width, "Width different after render"
-            assert image.size[1] == height, "Width different after render"
+            assert image.size[0] == width, "Width different after render. Was %d, should be %d" % (image.size[0], width)
+            assert image.size[1] == height, "Height different after render. Was %d, should be %d" % (image.size[1], height)
             image.reload()                  # try to get pixels from render into memory
-            assert image.size[0] == width, "Width different after reload"
-            assert image.size[1] == height, "Width different after reload"
+            assert image.size[0] == width, "Width different after reload. Was %d, should be %d" % (image.size[0], width)
+            assert image.size[1] == height, "Height different after reload"
+            assert image.size[1] == height, "Height different after reload. Was %d, should be %d" % (image.size[1], height)
             pixcount = pixelcount(image)
             print("Reloaded %s - %d pixels are nonzero." % (imgname, pixcount)) # ***TEMP***
             ####image.view_all()    # show for debug
@@ -513,10 +521,12 @@ class ImpostorMaker(bpy.types.Operator) :
             width = rect[2] - rect[0]
             height = rect[3] - rect[1]
             print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
+            camera = bpy.data.objects['Camera']                         # CHECK - may not always be current camera
+            face.setupcamera(camera, 5.0, 0.05)
             img = face.rendertoimage(width, height)
             composite.paste(img, rect[0], rect[1])                      # paste into image
-            if (i == 2) : ## ***TEMP DEBUG***
-                break
+            ####if (i == 2) : ## ***TEMP DEBUG***
+            ####    break
         image = composite.getimage()
         print("Composited %s - %d pixels are nonzero." % (filename, pixelcount(image))) # ***TEMP***
         pixelcopy1 = image.pixels[:]                                    # ***TEMP***
