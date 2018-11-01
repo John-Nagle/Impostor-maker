@@ -122,6 +122,7 @@ class ImageComposite :
         bpy.ops.image.new(name=name, width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)  
         self.image = bpy.data.images[name]          # must get by name
         assert self.image, "ImageComposite image not stored properly" 
+        print("ImageComposite size: (%d,%d)" % (width,height))      # ***TEMP***
         self.image.filepath = filepath              # will be saved here  
         
     def getimage(self) :
@@ -416,7 +417,6 @@ class ImpostorFace :
             assert image.size[1] == height, "Height different after render. Was %d, should be %d" % (image.size[1], height)
             image.reload()                  # try to get pixels from render into memory
             assert image.size[0] == width, "Width different after reload. Was %d, should be %d" % (image.size[0], width)
-            assert image.size[1] == height, "Height different after reload"
             assert image.size[1] == height, "Height different after reload. Was %d, should be %d" % (image.size[1], height)
             pixcount = pixelcount(image)
             print("Reloaded %s - %d pixels are nonzero." % (imgname, pixcount)) # ***TEMP***
