@@ -129,6 +129,10 @@ class ImageComposite :
         name = os.path.splitext(os.path.basename(filepath))[0]          # name without path
         if not name :
             raise ValueError("Invalid file name for composite: \"%s\"" % (filename,))
+        if name in bpy.data.images :                                    # release old image because we are changing size
+            oldimg = bpy.data.images[name]
+            oldimg.user_clear
+            bpy.data.images.remove(oldimg)
         bpy.ops.image.new(name=name, width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)  
         self.image = bpy.data.images[name]          # must get by name
         assert self.image, "ImageComposite image not stored properly" 
