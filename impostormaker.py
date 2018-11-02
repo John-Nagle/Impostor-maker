@@ -338,7 +338,7 @@ class ImpostorFace :
         #### print("Base edge" + str(self.baseedge))    # ***TEMP***
         xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
         upvec = xvec.cross(self.normal)                                 # up vector
-        orientmat = matrixlookat(self.center, self.center + self.normal, upvec)     # rotation to proper orientation 
+        orientmat = matrixlookat(self.center, self.center - self.normal, upvec)     # rotation to proper orientation 
         return orientmat                                                
                        
     def getcameratransform(self, disttocamera = 5.0) :
