@@ -586,6 +586,23 @@ class ImpostorMaker(bpy.types.Operator) :
             ####    break
         image = composite.getimage()
         image.save()                 # save image to file
+        
+    def markimpostor(self, faces) :
+        """
+        Debug use only. Puts a red plane on each face of the impostor.
+        Used to check transforms.
+        """
+        redmatl = gettestmatl("Red diffuse", (1, 0, 0))
+        for face in faces:
+            pos = face.worldtransform * face.center                 # dummy start pos
+            bpy.ops.mesh.primitive_cube_add(location=pos)
+            bpy.context.object.data.materials.append(redmatl)
+            bpy.context.object.name = "Marker cube"
+            xform = face.getfaceplanetransform()                    # get positioning transform
+            xformworld = face.worldtransform * xform                # in world space
+            bpy.context.object.matrix_world = xformworld            # apply rotation
+            bpy.context.object.scale = mathutils.Vector((face.facebounds[0], face.facebounds[1], 0.01))*0.5                  # apply scale
+
                 
     def buildimpostor(self, context, target, sources) :
         print("Target: " + target.name) 
@@ -601,22 +618,12 @@ class ImpostorMaker(bpy.types.Operator) :
         #   Lay out texture map
         texmapwidth = 512                                               # ***TEMP***
         self.layoutcomposite(target, "/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
-        ####return # ***TEMP***
+        self.markimpostor(faces)                                        # ***TEMP***
+        return 
+        
+        #   Old test code.
         #   Test by moving camera to look at first face
         redmatl = gettestmatl("Red diffuse", (1, 0, 0))
-                 
-        for face in faces:
-            ####face = faces[0]
-            #   Add objects on each face to test the transformation
-            if True :
-                pos = face.worldtransform * face.center                 # dummy start pos
-                bpy.ops.mesh.primitive_cube_add(location=pos)
-                bpy.context.object.data.materials.append(redmatl)
-                bpy.context.object.name = "Cube1"
-                xform = face.getfaceplanetransform()                    # get positioning transform
-                xformworld = face.worldtransform * xform                # in world space
-                bpy.context.object.matrix_world = xformworld            # apply rotation
-                bpy.context.object.scale = mathutils.Vector((face.facebounds[0], face.facebounds[1], 0.01))*0.5                  # apply scale
         return
         if False :  # ***TEMP*** old test code
             #   Place camera
