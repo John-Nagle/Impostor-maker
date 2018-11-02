@@ -228,6 +228,7 @@ class ImpostorFace :
     def __init__(self, context, target, poly) :
         self.normal = None                  # normal in object coords
         self.vertexids = []                 # vertex indices into 
+        self.loopindices = []               # loop index (sequential numbers)
         self.scaledverts = []               # vertices in object frame after scaling
         self.baseedge = None                # (vertID, vertID)
         self.center = None                  # center of face, object coords
@@ -250,6 +251,7 @@ class ImpostorFace :
         for loop_index in range(len(meloop)) :
             #   Get 3 succesive vertices for 2 edges
             vid0 = meloop[loop_index].vertex_index
+            self.loopindices.append(loop_index + poly.loop_start)    # loop index for this vertex
             vid1 = meloop[(loop_index + 1) % poly.loop_total].vertex_index # next, circularly
             vid2 = meloop[(loop_index + 2) % poly.loop_total].vertex_index # next, circularly
             ####print("    Loop index %d: Vertex indices: %d %d %d" % (loop_index, vid0, vid1, vid2))  
@@ -437,8 +439,10 @@ class ImpostorFace :
         me = self.target.data                       # mesh info
         assert me, "Dump - no mesh"
         if not me.uv_layers.active :
-            raise RuntimeError("Target object has no UV coordinates yet.")          # need to create these first
-        for vert, vertex_index in zip(self.scaledverts, self.vertexids) :
+            raise RuntimeError("Target object has no UV coordinates yet.")          # need to create these first          
+            
+            
+        for vert, vertex_index, loop_index in zip(self.scaledverts, self.vertexids, self.loopindices) :
             pt = faceplanematinv * vert                                             # point in face plane space
             assert abs(pt[2]  < 0.01), "Internal error: Vertex not on face plane"   # point must be on face plane, with Z = 0
             fractpt = ((pt[0] + self.facebounds[0]*0.5) / (self.facebounds[0]),
@@ -447,8 +451,8 @@ class ImpostorFace :
             uvpt = ((insetrect[0] + fractpt[0] * (insetrect[2]-insetrect[0])) / finalimagesize[0],
                     (insetrect[1] + fractpt[1] * (insetrect[3]-insetrect[1])) / finalimagesize[1])
             print("UV: Vertex (%1.2f,%1.2f) -> face point (%1.2f, %1.2f) -> UV (%1.3f, %1.3f)" % (pt[0], pt[1], fractpt[0], fractpt[1], uvpt[0], uvpt[1]))
-            me.uv_layers.active.data[vertex_index].uv.x = uvpt[0]         # apply UV indices
-            me.uv_layers.active.data[vertex_index].uv.y = uvpt[1]
+            me.uv_layers.active.data[loop_index].uv.x = uvpt[0]         # apply UV indices
+            me.uv_layers.active.data[loop_index].uv.y = uvpt[1]
         
                          
                     
