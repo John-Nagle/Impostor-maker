@@ -424,15 +424,21 @@ class ImpostorFace :
         assert image.size[1] == height, "Height different after reload. Was %d, should be %d" % (image.size[1], height)
         return image
         
-    def setuvs(self, rect, margin, finalimagesize) :
+    def setuvs(self, target, rect, margin, finalimagesize) :
         """
         Set UVs for this face to map rect inset by margin into the final image
+        
+        ***INDICES ARE WRONG*** - UVs get updated but not the right ones.
         """
         faceplanemat = self.getfaceplanetransform()                                
         faceplanematinv = faceplanemat.copy()
         faceplanematinv.invert()                                                    # transform object points onto face plane
         insetrect = (rect[0]+margin, rect[1]+margin, rect[2]-margin, rect[3]-margin)# actual area into which face was rendered, not including margin
-        for vert in self.scaledverts :
+        me = self.target.data                       # mesh info
+        assert me, "Dump - no mesh"
+        if not me.uv_layers.active :
+            raise RuntimeError("Target object has no UV coordinates yet.")          # need to create these first
+        for vert, vertex_index in zip(self.scaledverts, self.vertexids) :
             pt = faceplanematinv * vert                                             # point in face plane space
             assert abs(pt[2]  < 0.01), "Internal error: Vertex not on face plane"   # point must be on face plane, with Z = 0
             fractpt = ((pt[0] + self.facebounds[0]*0.5) / (self.facebounds[0]),
@@ -441,7 +447,8 @@ class ImpostorFace :
             uvpt = ((insetrect[0] + fractpt[0] * (insetrect[2]-insetrect[0])) / finalimagesize[0],
                     (insetrect[1] + fractpt[1] * (insetrect[3]-insetrect[1])) / finalimagesize[1])
             print("UV: Vertex (%1.2f,%1.2f) -> face point (%1.2f, %1.2f) -> UV (%1.3f, %1.3f)" % (pt[0], pt[1], fractpt[0], fractpt[1], uvpt[0], uvpt[1]))
-            ## ***MORE*** apply UVs here
+            me.uv_layers.active.data[vertex_index].uv.x = uvpt[0]         # apply UV indices
+            me.uv_layers.active.data[vertex_index].uv.y = uvpt[1]
         
                          
                     
@@ -548,8 +555,10 @@ class ImpostorMaker(bpy.types.Operator) :
         """
         rects = layout.getrects()
         size = layout.getsize()
+        print("Adding UV info.")
         for face, rect in zip(faces, rects) :       # iterate over arrays in sync
-            face.setuvs(rect, margin, size)         # set UV values for face
+            face.setuvs(target, rect, margin, size)         # set UV values for face
+            face.dump()
         return # ***TEMP***
         
         me = target.data                            # the mesh object
@@ -618,7 +627,7 @@ class ImpostorMaker(bpy.types.Operator) :
         #   Lay out texture map
         texmapwidth = 512                                               # ***TEMP***
         self.layoutcomposite(target, "/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
-        self.markimpostor(faces)                                        # ***TEMP***
+        ####self.markimpostor(faces)                                        # ***TEMP***
         return 
         
         #   Old test code.
