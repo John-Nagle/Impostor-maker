@@ -82,21 +82,7 @@ def gettestmatl(name, color) :
             matl = bpy.data.materials.new(name=name)
             matl.diffuse_color = color
     return matl
-    
-def pixelcount(image) :
-    """
-    Count nonzero non-1 pixels in image.
-    Debug use only - very slow.
-    """
-    pixcount = 0                  # is there any data in this image?
-    pixels = image.pixels[:]
-    print("Starting pixelcount: %d pixels." % (len(pixels),))
-    for i in range(len(pixels)) :
-        pixel = pixels[i]
-        if (pixel > 0.0 and  pixel < 1.0) :
-            pixcount = pixcount + 1
-    return pixcount
-    
+        
 def setnorender(ob, viz):
     """
     Set rendering invisibility of object and children
@@ -149,7 +135,6 @@ class ImageComposite :
         """
         Paste image into indicated position
         """
-        print("Pixel count in source image: %d" % (pixelcount(img),)) # ***TEMP***
         (inw, inh) = img.size                       # input size of image
         (outw, outh) = self.image.size              # existing size
         if (inw + x > outw or inh + y > outh or     # will it fit?
@@ -173,7 +158,6 @@ class ImageComposite :
                 ####print("Paste row to %d:%d from %d:%d" % (start, end, instart, instart+inw*ImageComposite.CHANNELS))   # ***TEMP***
                 self.image.pixels[start : end] = img.pixels[instart : instart+inw*ImageComposite.CHANNELS]
                 instart = instart + inw*ImageComposite.CHANNELS 
-        ####print("Pixel count in composite image: %d" % (pixelcount(self.image),)) # ***TEMP***
         
 class ImageLayout :
     """
@@ -248,7 +232,6 @@ class ImpostorFace :
         self.baseedge = None                # (vertID, vertID)
         self.center = None                  # center of face, object coords
         self.facebounds = None              # size bounds of face, world scale
-        self.scale = (1.0,1.0,1.0)           # scale to world size
         rot = (target.matrix_world.to_3x3().normalized()).to_4x4() # rotation only
         trans = mathutils.Matrix.Translation(target.matrix_world.to_translation())
         self.worldtransform = trans * rot   # transform to global coords
@@ -319,8 +302,6 @@ class ImpostorFace :
         #    Compute bounding box in face plane coordinate system
         lowerleft = faceplanemat * mathutils.Vector((minx, miny, 0.0))              # we have to transfer these back to obj coords to scale
         upperright = faceplanemat * mathutils.Vector((maxx, maxy, 0.0))
-        lowerleft = vecmult(lowerleft, self.scale)                                  # must scale in face coords
-        upperright = vecmult(upperright, self.scale)
         newcenter = (lowerleft + upperright)*0.5                                    # in face coords
         lowerleft = faceplanematinv * lowerleft                                     # transform back to object coords
         upperright = faceplanematinv * upperright
@@ -432,9 +413,6 @@ class ImpostorFace :
         image.reload()                  # try to get pixels from render into memory
         assert image.size[0] == width, "Width different after reload. Was %d, should be %d" % (image.size[0], width)
         assert image.size[1] == height, "Height different after reload. Was %d, should be %d" % (image.size[1], height)
-        pixcount = pixelcount(image)
-        print("Reloaded %s - %d pixels are nonzero." % (imgname, pixcount)) # ***TEMP***
-        ####image.view_all()    # show for debug
         return image
                          
                     
@@ -544,16 +522,7 @@ class ImpostorMaker(bpy.types.Operator) :
             ####if (i == 2) : ## ***TEMP DEBUG***
             ####    break
         image = composite.getimage()
-        print("Composited %s - %d pixels are nonzero." % (filename, pixelcount(image))) # ***TEMP***
-        pixelcopy1 = image.pixels[:]                                    # ***TEMP***
-        print("Filepath change %s - %d pixels are nonzero." % (filename, pixelcount(image))) # ***TEMP***
-        ####image.filepath = filename
         image.save()                 # save image to file
-        print("Saved %s - %d pixels are nonzero." % (filename, pixelcount(image))) # ***TEMP***
-        pixelcopy2 = image.pixels[:]
-        for i in range(len(pixelcopy1)) :
-            assert pixelcopy1[i] == pixelcopy2[i], "Pixel changed by save at index %d" %(i,)
-
                 
     def buildimpostor(self, context, target, sources) :
         print("Target: " + target.name) 
@@ -568,8 +537,8 @@ class ImpostorMaker(bpy.types.Operator) :
             f.dump()
         #   Lay out texture map
         texmapwidth = 512                                               # ***TEMP***
-        self.layoutcomposite("/tmp/compositetestd.png", faces, texmapwidth)                        # lay out, first try
-        ####return # ***TEMP***
+        self.layoutcomposite("/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
+        return # ***TEMP***
         #   Test by moving camera to look at first face
         redmatl = gettestmatl("Red diffuse", (1, 0, 0))
                  
