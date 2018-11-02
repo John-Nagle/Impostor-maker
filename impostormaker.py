@@ -283,9 +283,9 @@ class ImpostorFace :
             else :
                 self.center = self.center + v0  # sum the vertices
         #   All vertices examined.  
-        self.center = self.center / poly.loop_total # average to get center of face         
         if not self.normal :
             raise RuntimeError("Unable to compute a normal for a face of \"%s\"." % (target.name,)) # degenerate geometry of some kind    
+        self.center = self.center / poly.loop_total # average to get center of face         
         print("  Face normal: (%1.4f,%1.4f,%1.4f)" % (self.normal[0],self.normal[1],self.normal[2])) 
         #   Compute bounding box of face.  Use longest edge to orient the bounding box
         #   This will be the area of the image we will take and map onto the face.
@@ -296,21 +296,28 @@ class ImpostorFace :
         ####pts = [faceplanematinv * me.vertices[vid].co for vid in self.vertexids]     # points transformed onto face, now 2D
         pts = [faceplanematinv * vert for vert in self.scaledverts]                 # vertices transformed onto face, now 2D
         for pt in pts :                                                             # all points must be on face plane
-            assert abs(pts[0][2]  < 0.01), "Internal error: Vertex not on face plane"   # point must be on face plane
+            assert abs(pt[2]  < 0.01), "Internal error: Vertex not on face plane"   # point must be on face plane
         minx = min([pt[0] for pt in pts])                                           # size per max excursion in X
         miny = min([pt[1] for pt in pts])                                           # size per max excursion in X
         maxx = max([pt[0] for pt in pts])                                           # size per max excursion in X
         maxy = max([pt[1] for pt in pts])                                           # size per max excursion in X
         #    Compute bounding box in face plane coordinate system
-        lowerleft = faceplanemat * mathutils.Vector((minx, miny, 0.0))              # we have to transfer these back to obj coords to scale
-        upperright = faceplanemat * mathutils.Vector((maxx, maxy, 0.0))
-        newcenter = (lowerleft + upperright)*0.5                                    # in face coords
-        lowerleft = faceplanematinv * lowerleft                                     # transform back to object coords
-        upperright = faceplanematinv * upperright
+        lowerleft = mathutils.Vector((minx, miny, 0.0))                             # bounding box in face coordinates
+        upperright = mathutils.Vector((maxx, maxy, 0.0))
         width = upperright[0] - lowerleft[0]                                        # dimensions for ortho camera
         height = upperright[1] - lowerleft[1]
         self.facebounds = (width, height)
-        #   Compute size
+
+        
+        lowerleft = faceplanemat * mathutils.Vector((minx, miny, 0.0))              # we have to transfer these back to obj coords to scale
+        upperright = faceplanemat * mathutils.Vector((maxx, maxy, 0.0))
+        newcenter = (lowerleft + upperright)*0.5                                    # in object coords
+        
+        ####lowerleft = faceplanematinv * lowerleft                                     # transform back to object coords
+        ####upperright = faceplanematinv * upperright
+        ####width = upperright[0] - lowerleft[0]                                        # dimensions for ortho camera
+        ####height = upperright[1] - lowerleft[1]
+        ####self.facebounds = (width, height)
         #   Re-center
         print("Old center: %s  New center: %s" % (str(self.center), str(newcenter)))
         self.center = newcenter                                                     # and use it
@@ -594,13 +601,13 @@ class ImpostorMaker(bpy.types.Operator) :
         #   Lay out texture map
         texmapwidth = 512                                               # ***TEMP***
         self.layoutcomposite(target, "/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
-        return # ***TEMP***
+        ####return # ***TEMP***
         #   Test by moving camera to look at first face
         redmatl = gettestmatl("Red diffuse", (1, 0, 0))
                  
         for face in faces:
             ####face = faces[0]
-            #   Add an object to test the transformation
+            #   Add objects on each face to test the transformation
             if True :
                 pos = face.worldtransform * face.center                 # dummy start pos
                 bpy.ops.mesh.primitive_cube_add(location=pos)
