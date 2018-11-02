@@ -104,6 +104,16 @@ def setnorender(ob, viz):
     ob.hide_render = viz
     for child in ob.children :
         setvisible(child, viz)
+        
+def deleteimg(img) :
+    """
+    Delete image object
+    """
+    img.user_clear                          # clear this object of users
+    ###bpy.context.scene.objects.unlink(obj)   # unlink the object from the scene
+    bpy.data.images.remove(img)            # delete the object from the data block
+
+
 
 
 class ImageComposite :
@@ -396,31 +406,31 @@ class ImpostorFace :
         bpy.context.scene.cycles.film_transparent = True                                # transparent background, Cycles renderer
         bpy.ops.render.render(write_still=True) 
         
-    def rendertoimage(self, width, height) :
+    def rendertoimage(self, fd, width, height) :
         """
         Render to new image object
         """
         #    ***TEMP*** not deleting
-        with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=False) as fd :       # create temp file for render
-            filename = fd.name
-            ####filename = "/tmp/testonly.png"  # ***TEMP***
-            self.rendertofile(filename, width, height)                                 # render into temp file
-            print("Temp file: %s  (%d,%d)" % (filename, width, height))
-            ####image = bpy.ops.image.new(name="Face render", width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)   # render result goes here
-            ####image.open(fd.name)                                                             # load rendered image
-            bpy.data.images.load(filename, check_existing=True)
-            ####print(bpy.data.images.keys())
-            imgname = os.path.basename(filename)    # Blender seems to want base name
-            image = bpy.data.images[imgname]                                                   # image object
-            assert image, "No image object found"
-            assert image.size[0] == width, "Width different after render. Was %d, should be %d" % (image.size[0], width)
-            assert image.size[1] == height, "Height different after render. Was %d, should be %d" % (image.size[1], height)
-            image.reload()                  # try to get pixels from render into memory
-            assert image.size[0] == width, "Width different after reload. Was %d, should be %d" % (image.size[0], width)
-            assert image.size[1] == height, "Height different after reload. Was %d, should be %d" % (image.size[1], height)
-            pixcount = pixelcount(image)
-            print("Reloaded %s - %d pixels are nonzero." % (imgname, pixcount)) # ***TEMP***
-            ####image.view_all()    # show for debug
+        fd.truncate()                                                                   # clear file before rendering into it
+        filename = fd.name
+        ####filename = "/tmp/testonly.png"  # ***TEMP***
+        self.rendertofile(filename, width, height)                                 # render into temp file
+        print("Temp file: %s  (%d,%d)" % (filename, width, height))
+        ####image = bpy.ops.image.new(name="Face render", width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)   # render result goes here
+        ####image.open(fd.name)                                                             # load rendered image
+        bpy.data.images.load(filename, check_existing=True)
+        ####print(bpy.data.images.keys())
+        imgname = os.path.basename(filename)    # Blender seems to want base name
+        image = bpy.data.images[imgname]                                                   # image object
+        assert image, "No image object found"
+        assert image.size[0] == width, "Width different after render. Was %d, should be %d" % (image.size[0], width)
+        assert image.size[1] == height, "Height different after render. Was %d, should be %d" % (image.size[1], height)
+        image.reload()                  # try to get pixels from render into memory
+        assert image.size[0] == width, "Width different after reload. Was %d, should be %d" % (image.size[0], width)
+        assert image.size[1] == height, "Height different after reload. Was %d, should be %d" % (image.size[1], height)
+        pixcount = pixelcount(image)
+        print("Reloaded %s - %d pixels are nonzero." % (imgname, pixcount)) # ***TEMP***
+        ####image.view_all()    # show for debug
         return image
                          
                     
@@ -513,18 +523,20 @@ class ImpostorMaker(bpy.types.Operator) :
         rects = layout.getrects()
         composite = ImageComposite(filename, width, height)
         ####composite.getimage().filepath = filename
-        print("Pasting...") # ***TEMP***
-        for i in range(len(faces)) :
-            print("Pasting face %d" % (i,)) # ***TEMP***
-            face = faces[i]
-            rect = rects[i]
-            width = rect[2] - rect[0]
-            height = rect[3] - rect[1]
-            print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
-            camera = bpy.data.objects['Camera']                         # CHECK - may not always be current camera
-            face.setupcamera(camera, 5.0, 0.05)
-            img = face.rendertoimage(width, height)
-            composite.paste(img, rect[0], rect[1])                      # paste into image
+        print("Rendering and pasting...") # ***TEMP***
+        with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=False) as fd :       # create temp file for render
+            for i in range(len(faces)) :
+                print("Pasting face %d" % (i,)) # ***TEMP***
+                face = faces[i]
+                rect = rects[i]
+                width = rect[2] - rect[0]
+                height = rect[3] - rect[1]
+                print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
+                camera = bpy.data.objects['Camera']                         # CHECK - may not always be current camera
+                face.setupcamera(camera, 5.0, 0.05)
+                img = face.rendertoimage(fd, width, height)
+                composite.paste(img, rect[0], rect[1])                      # paste into image
+                deleteimg(img)                                              # get rid of just-rendered image
             ####if (i == 2) : ## ***TEMP DEBUG***
             ####    break
         image = composite.getimage()
@@ -552,7 +564,7 @@ class ImpostorMaker(bpy.types.Operator) :
             f.dump()
         #   Lay out texture map
         texmapwidth = 512                                               # ***TEMP***
-        self.layoutcomposite("/tmp/compositetestb.png", faces, texmapwidth)                        # lay out, first try
+        self.layoutcomposite("/tmp/compositetestd.png", faces, texmapwidth)                        # lay out, first try
         ####return # ***TEMP***
         #   Test by moving camera to look at first face
         redmatl = gettestmatl("Red diffuse", (1, 0, 0))
