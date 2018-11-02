@@ -232,6 +232,8 @@ class ImpostorFace :
         self.baseedge = None                # (vertID, vertID)
         self.center = None                  # center of face, object coords
         self.facebounds = None              # size bounds of face, world scale
+        self.target = target                # the Blender object
+        self.poly = poly                    # the Blender face
         rot = (target.matrix_world.to_3x3().normalized()).to_4x4() # rotation only
         trans = mathutils.Matrix.Translation(target.matrix_world.to_translation())
         self.worldtransform = trans * rot   # transform to global coords
@@ -414,6 +416,7 @@ class ImpostorFace :
         assert image.size[0] == width, "Width different after reload. Was %d, should be %d" % (image.size[0], width)
         assert image.size[1] == height, "Height different after reload. Was %d, should be %d" % (image.size[1], height)
         return image
+        
                          
                     
     def dump(self) :
@@ -422,6 +425,15 @@ class ImpostorFace :
         """
         print("Face:  %d vertices, normal (%1.4f,%1.4f,%1.4f), center (%1.4f,%1.4f,%1.4f)" % 
             (len(self.vertexids), self.normal[0], self.normal[1], self.normal[2], self.center[0], self.center[1], self.center[2])) 
+        me = self.target.data                       # mesh info
+        assert me, "Dump - no mesh"
+        for vert_idx, loop_idx in zip(self.poly.vertices, self.poly.loop_indices):
+            if me.uv_layers.active :
+                uv_coords = me.uv_layers.active.data[loop_idx].uv   
+                print("face idx: %i, vert idx: %i, uv: (%f, %f)" % (self.poly.index, vert_idx, uv_coords.x, uv_coords.y))
+            else :
+                print("face idx: %i, vert idx: %i, uv: None" % (self.poly.index, vert_idx))
+
     
 
     
@@ -477,10 +489,11 @@ class ImpostorMaker(bpy.types.Operator) :
         bm.clear()                                  # clean up
         bm.free()
         
-    def layoutcomposite(self, filename, faces, width=512, margin=9) :
+    def layoutcomposite(self, target, filename, faces, width=512, margin=9) :
         """
         Decide where to place faces in composite image
         """
+        #   Layout phase
         assert len(faces) > 0, "No faces for impostor target"         
         layout = ImageLayout(width, margin)
         #   Widest faces first
@@ -494,8 +507,26 @@ class ImpostorMaker(bpy.types.Operator) :
             layout.getrect(width, height)           # lay out in layout object
             
         layout.dump()                               # ***TEMP***
+        #   Rendering phase
+        setnorender(target, True)                                           # hide target impostor object during render
         outimg = self.compositefaces(filename, sortedfaces, layout)
+        setnorender(target, False)                                          # hide target impostor object during render
+        #   UV setup phase
+        ####self.adduvlayer(target, outimg)
         
+    def adduvlayer(self, target, img) :
+        """
+        Add UV layer and connect to texture
+        
+        ***NOT WORKING***
+        """
+        me = target.data                            # the mesh object
+        uv_layer = me.loops.layers.uv.new()         # now we have a UV layer
+        tex_layer = me.faces.layers.tex.new()
+        for f in me.faces:
+            f[tex_layer].image = img                # same image for all faces
+            ####for l in f.loops:
+            ####    l[uv_layer].uv = #,#     
         
     def compositefaces(self, filename, faces, layout) :
         """
@@ -537,7 +568,7 @@ class ImpostorMaker(bpy.types.Operator) :
             f.dump()
         #   Lay out texture map
         texmapwidth = 512                                               # ***TEMP***
-        self.layoutcomposite("/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
+        self.layoutcomposite(target, "/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
         return # ***TEMP***
         #   Test by moving camera to look at first face
         redmatl = gettestmatl("Red diffuse", (1, 0, 0))
