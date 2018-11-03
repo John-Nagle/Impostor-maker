@@ -354,12 +354,17 @@ class ImpostorFace :
     def getcameratransform(self, disttocamera = 5.0) :
         """
         Get camera transform, world coordinates
+        
+        ***WRONG*** - we either get the wrong side of the normal, or the orientation is flipped.
         """
         xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
-        upvec = xvec.cross(self.normal)                                 # up vector
-        print("Getcameratransform: upvec: %s, normal: %s" % (upvec, self.normal))
-        orientmat = matrixlookat(mathutils.Vector((0,0,0)), -self.normal, upvec)     # rotation to proper orientation 
-        camerapos = self.center + self.normal*disttocamera              # location of camera, object coords
+        cameranormal = self.normal
+        if self.poly.normal.dot(cameranormal) > 0 :
+            cameranormal = -cameranormal
+        upvec = xvec.cross(self.normal)                                # up vector
+        print("Getcameratransform: upvec: %s, normal: %s  camera normal %s" % (upvec, self.normal, cameranormal))
+        orientmat = matrixlookat(mathutils.Vector((0,0,0)), -cameranormal, upvec)     # rotation to proper orientation 
+        camerapos = self.center + cameranormal*disttocamera              # location of camera, object coords
         posmat = mathutils.Matrix.Translation(camerapos)
         return self.worldtransform * (posmat * orientmat)               # camera in world coordinates
       
@@ -453,6 +458,7 @@ class ImpostorFace :
             assert abs(pt[2]  < 0.01), "Internal error: Vertex not on face plane"   # point must be on face plane, with Z = 0
             fractpt = ((pt[0] + self.facebounds[0]*0.5) / (self.facebounds[0]),
                        (pt[1] + self.facebounds[1]*0.5) / (self.facebounds[1]))     # point in 0..1 space on face plane
+            fractpt = (1.0-fractpt[0], fractpt[1])                                     # ***TEMP TEST*** u may be backwards
             #   UV points are in 0..1 over entire image space
             uvpt = ((insetrect[0] + fractpt[0] * (insetrect[2]-insetrect[0])) / finalimagesize[0],
                     (insetrect[1] + fractpt[1] * (insetrect[3]-insetrect[1])) / finalimagesize[1])
