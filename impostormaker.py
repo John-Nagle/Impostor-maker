@@ -99,14 +99,9 @@ def deleteimg(img) :
     ###bpy.context.scene.objects.unlink(obj)   # unlink the object from the scene
     bpy.data.images.remove(img)            # delete the object from the data block
 
-
-
-
 class ImageComposite :
     """
     Image composited from multiple images
-    
-    ***UNTESTED***
     """
     CHANNELS = 4                                    # RGBA
     
@@ -314,12 +309,6 @@ class ImpostorFace :
         lowerleft = faceplanemat * mathutils.Vector((minx, miny, 0.0))              # we have to transfer these back to obj coords to scale
         upperright = faceplanemat * mathutils.Vector((maxx, maxy, 0.0))
         newcenter = (lowerleft + upperright)*0.5                                    # in object coords
-        
-        ####lowerleft = faceplanematinv * lowerleft                                     # transform back to object coords
-        ####upperright = faceplanematinv * upperright
-        ####width = upperright[0] - lowerleft[0]                                        # dimensions for ortho camera
-        ####height = upperright[1] - lowerleft[1]
-        ####self.facebounds = (width, height)
         #   Re-center
         print("Old center: %s  New center: %s" % (str(self.center), str(newcenter)))
         self.center = newcenter                                                     # and use it
@@ -406,16 +395,13 @@ class ImpostorFace :
         """
         Render to new image object
         """
-        #    ***TEMP*** not deleting
         fd.truncate()                                                                   # clear file before rendering into it
         filename = fd.name
-        ####filename = "/tmp/testonly.png"  # ***TEMP***
         self.rendertofile(filename, width, height)                                 # render into temp file
         print("Temp file: %s  (%d,%d)" % (filename, width, height))
         ####image = bpy.ops.image.new(name="Face render", width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)   # render result goes here
         ####image.open(fd.name)                                                             # load rendered image
         bpy.data.images.load(filename, check_existing=True)
-        ####print(bpy.data.images.keys())
         imgname = os.path.basename(filename)    # Blender seems to want base name
         image = bpy.data.images[imgname]                                                   # image object
         assert image, "No image object found"
@@ -429,8 +415,6 @@ class ImpostorFace :
     def setuvs(self, target, rect, margin, finalimagesize) :
         """
         Set UVs for this face to map rect inset by margin into the final image
-        
-        ***INDICES ARE WRONG*** - UVs get updated but not the right ones.
         """
         faceplanemat = self.getfaceplanetransform()                                
         faceplanematinv = faceplanemat.copy()
@@ -554,8 +538,6 @@ class ImpostorMaker(bpy.types.Operator) :
     def adduvlayer(self, target, faces, layout, margin) :
         """
         Add UV layer and connect to texture
-        
-        ***NOT WORKING***
         """
         rects = layout.getrects()
         size = layout.getsize()
@@ -563,15 +545,6 @@ class ImpostorMaker(bpy.types.Operator) :
         for face, rect in zip(faces, rects) :       # iterate over arrays in sync
             face.setuvs(target, rect, margin, size)         # set UV values for face
             face.dump()
-        return # ***TEMP***
-        
-        me = target.data                            # the mesh object
-        uv_layer = me.loops.layers.uv.new()         # now we have a UV layer
-        tex_layer = me.faces.layers.tex.new()
-        for f in me.faces:
-            f[tex_layer].image = img                # same image for all faces
-            ####for l in f.loops:
-            ####    l[uv_layer].uv = #,#     
         
     def compositefaces(self, filename, faces, layout) :
         """
@@ -580,7 +553,6 @@ class ImpostorMaker(bpy.types.Operator) :
         (width, height) = layout.getsize()                              # final image dimensions
         rects = layout.getrects()
         composite = ImageComposite(filename, width, height)
-        ####composite.getimage().filepath = filename
         print("Rendering and pasting...") # ***TEMP***
         with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=False) as fd :       # create temp file for render
             for i in range(len(faces)) :
@@ -595,8 +567,6 @@ class ImpostorMaker(bpy.types.Operator) :
                 img = face.rendertoimage(fd, width, height)
                 composite.paste(img, rect[0], rect[1])                      # paste into image
                 deleteimg(img)                                              # get rid of just-rendered image
-            ####if (i == 2) : ## ***TEMP DEBUG***
-            ####    break
         image = composite.getimage()
         image.save()                 # save image to file
         
@@ -631,23 +601,5 @@ class ImpostorMaker(bpy.types.Operator) :
         #   Lay out texture map
         texmapwidth = 512                                               # ***TEMP***
         self.layoutcomposite(target, "/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
-        ####self.markimpostor(faces)                                        # ***TEMP***
-        return 
-        
-        #   Old test code.
-        #   Test by moving camera to look at first face
-        redmatl = gettestmatl("Red diffuse", (1, 0, 0))
-        return
-        if False :  # ***TEMP*** old test code
-            #   Place camera
-            camera = bpy.data.objects['Camera']
-            face.setupcamera(camera, 5.0, 0.05)
-            setnorender(target, True)                                   # hide target impostor object during render
-            face.rendertofile("/tmp/impostortest.png", 512)             # take picture
-            img = face.rendertoimage(512)
-            setnorender(target, False)
-            break   # only 1st point for now
-
-        
-        
+        ####self.markimpostor(faces)                                    # Turn on if transform bugs to show faces.
 
