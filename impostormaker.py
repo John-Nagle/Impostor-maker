@@ -299,7 +299,10 @@ class ImpostorFace :
                 self.center = self.center + v0  # sum the vertices
         #   All vertices examined.  
         if not self.normal :
-            raise RuntimeError("Unable to compute a normal for a face of \"%s\"." % (target.name,)) # degenerate geometry of some kind    
+            raise RuntimeError("Unable to compute a normal for a face of \"%s\"." % (target.name,)) # degenerate geometry of some kind  
+        ####if poly.normal.dot(self.normal) > 0.0 : # if our normal is backwards
+        ####    print("Flipping normal: %s" % ((self.normal),))
+        ####    self.normal = -self.normal          # invert ours  
         self.center = self.center / poly.loop_total # average to get center of face         
         print("  Face normal: (%1.4f,%1.4f,%1.4f)" % (self.normal[0],self.normal[1],self.normal[2])) 
         #   Compute bounding box of face.  Use longest edge to orient the bounding box
@@ -521,7 +524,7 @@ class ImpostorMaker(bpy.types.Operator) :
         """
         Do a limited dissolve on the target object to combine coplanar triangles into big faces.
         """
-        BREAKANGLE = math.radians(0.01)             # must be very flat
+        BREAKANGLE = math.radians(0.1)              # must be very flat
         bm = bmesh.new()                            # get working mesh
         bm.from_mesh(target.data)                   # load it from target object
         #   Limited dissove with very shallow break angle
@@ -600,6 +603,7 @@ class ImpostorMaker(bpy.types.Operator) :
                 img = face.rendertoimage(fd, width, height)
                 composite.paste(img, rect[0], rect[1])                      # paste into image
                 deleteimg(img)                                              # get rid of just-rendered image
+                ####break #### ***TEMP TEST*** one face only 
         image = composite.getimage()
         image.save()                 # save image to file
         
