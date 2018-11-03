@@ -281,7 +281,8 @@ class ImpostorFace :
                 continue                    # skip this edge pair
             cross.normalize()               # normal vector, probably
             if self.normal :
-                if self.normal.dot(cross) < 1.0 - NORMALERROR :
+                if abs(self.normal.dot(cross)) < 1.0 - NORMALERROR :
+                    print("Dot product of normal %s and edge %s is %1.4f, not zero." % (self.normal, cross, self.normal.dot(cross)))
                     raise RuntimeError("A face of \"%s\" is not flat." % (target.name,))
             else :
                 self.normal = cross             # we have a face normal
@@ -520,7 +521,7 @@ class ImpostorMaker(bpy.types.Operator) :
         """
         Do a limited dissolve on the target object to combine coplanar triangles into big faces.
         """
-        BREAKANGLE = math.radians(0.1)              # must be very flat
+        BREAKANGLE = math.radians(0.01)             # must be very flat
         bm = bmesh.new()                            # get working mesh
         bm.from_mesh(target.data)                   # load it from target object
         #   Limited dissove with very shallow break angle
