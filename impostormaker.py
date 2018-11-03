@@ -72,6 +72,16 @@ def vecmult(v0, v1) :
     """
     return mathutils.Vector((v0[0]*v1[0], v0[1]*v1[1], v0[2]*v1[2]))
     
+def nextpowerof2(n, maxval) :
+    x = 1
+    while x < n :                       # if not big enough yet
+        if x > maxval :
+            raise ValueError("Image size %d is too large. Limit %d" % (n,maxval))
+        x = x * 2                       # next power of 2
+    print("Next power of 2: %d -> %d" % (n, x)) # ***TEMP*** if this is broken I'm stupid
+    return x
+        
+    
 def gettestmatl(name, color) :
     """
     Create simple colored material for test objects
@@ -159,11 +169,11 @@ class ImageLayout :
     Very simple image layout planner
     
     Ask for a rectangle, and it fits it in.
-    ***UNTESTED***
     """
     
-    def __init__(self, width, margin) :
+    def __init__(self, margin, width, height = None) :
         self.width = width
+        self.height = height                        # desired height, or none for auto
         self.margin = margin
         self.xpos = 0                               # next starting point, X
         self.ypos = 0                               # next starting point, Y
@@ -190,13 +200,20 @@ class ImageLayout :
             self.ymax = max(self.ymax, self.ypos + height + self.margin)
         rect = (corner[0], corner[1], corner[0] + width, corner[1] + height)
         self.rects.append(rect)                     # allocated rectangle
+        if self.height and self.ypos > self.height :    # if specified size and won't fit
+            raise ValueError("Image (%d,%d) will not fit into desired target image size of (%d,%d)" % (width, height, self.width, self.height))
         return rect
             
     def getsize(self) :
         """
         Return final size of image
         """
-        return (self.width, self.ymax)
+        if self.height :                                # if caller specified height
+            return (self.width, self.height)            # use it
+        return (self.width, self.ymax)                  # otherwise report height needed
+        
+    def getmargin(self) :
+        return self.margin
         
     def getrects(self) :
         """
@@ -379,7 +396,8 @@ class ImpostorFace :
         ***NEED TO SAVE CAMERA PARAMS AND RETURN TO NORMAL OR USE A NEW CAMERA***
         ***NEED TO WORK OUT FILENAME/OBJECT NAME UNIQUENESS ISSUES***
         """
-        height = int(math.floor((self.facebounds[1] / self.facebounds[0]) * width))     # user sets width, height is just enough for info
+        heightalt = int(math.floor((self.facebounds[1] / self.facebounds[0]) * width))     # user sets width, height is just enough for info
+        assert abs(height-heightalt) < 2, "Height estimate is wrong"                    # ***TEMP*** not sure about this
         bpy.context.scene.render.filepath = filename
         bpy.context.scene.render.resolution_x = width
         bpy.context.scene.render.resolution_y = height
@@ -465,6 +483,8 @@ class ImpostorMaker(bpy.types.Operator) :
     bl_label = "Make impostor"          # display name in the interface.
     bl_options = {'REGISTER', 'UNDO'}   # enable undo for the operator.
     
+    MAXIMAGEDIM = 1024                  # Second Life texture size limit (no impostor should be this big)
+    
     def __init__(self) :
         """ Constructor """
         pass
@@ -510,24 +530,36 @@ class ImpostorMaker(bpy.types.Operator) :
         bm.clear()                                  # clean up
         bm.free()
         
-    def layoutcomposite(self, target, filename, faces, width=512, margin=9) :
+    def layoutcomposite(self, layout, faces) :
         """
         Decide where to place faces in composite image
         """
-        #   Layout phase
-        assert len(faces) > 0, "No faces for impostor target"         
-        layout = ImageLayout(width, margin)
         #   Widest faces first
+        width = layout.getsize()[0]
         sortedfaces = sorted(faces, key = lambda f : f.getfacebounds()[0], reverse=True)
         widest = sortedfaces[0].getfacebounds()[0]  # width of widest face
-        scalefactor = (width - 2*margin) / widest     # pixels per unit
+        scalefactor = (width - 2*layout.getmargin()) / widest     # pixels per unit
         for face in sortedfaces :
             width = int(math.floor(face.getfacebounds()[0] * scalefactor))   # width in pixels
             height = int(math.floor(face.getfacebounds()[1] * scalefactor))   # height in pixels
             print("Face size in pixels: (%d,%d)" % (width, height)) # ***TEMP***
-            layout.getrect(width, height)           # lay out in layout object
-            
+            layout.getrect(width, height)           # lay out in layout object            
         layout.dump()                               # ***TEMP***
+        return sortedfaces
+
+        
+    def buildcomposite(self, target, filename, faces, width=512, margin=9) :
+        """
+        Create composite image
+        """
+        #   Layout phase
+        assert len(faces) > 0, "No faces for impostor target"   
+        #   Pass 1 - find out how much space we need      
+        layout = ImageLayout(margin, width, None)
+        self.layoutcomposite(layout, faces)
+        #   Pass 2 - layout in actual size image
+        layout = ImageLayout(margin, width, nextpowerof2(layout.getsize()[1], self.MAXIMAGEDIM))  # round up to next power of 2
+        sortedfaces = self.layoutcomposite(layout, faces)
         #   Rendering phase
         setnorender(target, True)                                           # hide target impostor object during render
         outimg = self.compositefaces(filename, sortedfaces, layout)
@@ -599,7 +631,7 @@ class ImpostorMaker(bpy.types.Operator) :
         for f in faces :
             f.dump()
         #   Lay out texture map
-        texmapwidth = 512                                               # ***TEMP***
-        self.layoutcomposite(target, "/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
+        texmapwidth = 256                                               # ***TEMP***
+        self.buildcomposite(target, "/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
         ####self.markimpostor(faces)                                    # Turn on if transform bugs to show faces.
 
