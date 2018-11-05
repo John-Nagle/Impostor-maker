@@ -73,12 +73,14 @@ def vecmult(v0, v1) :
     return mathutils.Vector((v0[0]*v1[0], v0[1]*v1[1], v0[2]*v1[2]))
     
 def nextpowerof2(n, maxval) :
+    """
+    Round up to next power of 2
+    """
     x = 1
     while x < n :                       # if not big enough yet
         if x > maxval :
             raise ValueError("Image size %d is too large. Limit %d" % (n,maxval))
         x = x * 2                       # next power of 2
-    print("Next power of 2: %d -> %d" % (n, x)) # ***TEMP*** if this is broken I'm stupid
     return x
         
     
@@ -347,6 +349,7 @@ class ImpostorFace :
         """
         #### print("Base edge" + str(self.baseedge))    # ***TEMP***
         xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
+        ### xvec = -xvec # ***TEMP***
         upvec = xvec.cross(self.normal)                                 # up vector
         orientmat = matrixlookat(self.center, self.center - self.normal, upvec)     # rotation to proper orientation 
         return orientmat                                                
@@ -354,12 +357,10 @@ class ImpostorFace :
     def getcameratransform(self, disttocamera = 5.0) :
         """
         Get camera transform, world coordinates
-        
-        ***WRONG*** - we either get the wrong side of the normal, or the orientation is flipped.
-        """
+                """
         xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
         cameranormal = self.normal
-        if self.poly.normal.dot(cameranormal) > 0 :
+        if self.poly.normal.dot(cameranormal) < 0 :
             cameranormal = -cameranormal
         upvec = xvec.cross(self.normal)                                # up vector
         print("Getcameratransform: upvec: %s, normal: %s  camera normal %s" % (upvec, self.normal, cameranormal))
@@ -458,7 +459,7 @@ class ImpostorFace :
             assert abs(pt[2]  < 0.01), "Internal error: Vertex not on face plane"   # point must be on face plane, with Z = 0
             fractpt = ((pt[0] + self.facebounds[0]*0.5) / (self.facebounds[0]),
                        (pt[1] + self.facebounds[1]*0.5) / (self.facebounds[1]))     # point in 0..1 space on face plane
-            fractpt = (1.0-fractpt[0], fractpt[1])                                     # ***TEMP TEST*** u may be backwards
+            ####fractpt = (1.0-fractpt[0], fractpt[1])                                  # ***TEMP FIX*** u is backwards
             #   UV points are in 0..1 over entire image space
             uvpt = ((insetrect[0] + fractpt[0] * (insetrect[2]-insetrect[0])) / finalimagesize[0],
                     (insetrect[1] + fractpt[1] * (insetrect[3]-insetrect[1])) / finalimagesize[1])
@@ -512,7 +513,7 @@ class ImpostorMaker(bpy.types.Operator) :
         if not context.selected_objects :
             self.errormsg("Nothing selected.")
             return {'FINISHED'}
-        target = context.selected_objects[-1]       # target impostor
+        target = context.selected_objects[0]        # target impostor (last selection is first?)
         if target.type != 'MESH' :
             self.errormsg("Impostor \"%s\"must be a mesh." % (target.name,))
             return {'FINISHED'}
@@ -547,6 +548,7 @@ class ImpostorMaker(bpy.types.Operator) :
         #   Widest faces first
         width = layout.getsize()[0]
         sortedfaces = sorted(faces, key = lambda f : f.getfacebounds()[0], reverse=True)
+        ####sortedfaces = faces # ***TEMP DEBUG***
         widest = sortedfaces[0].getfacebounds()[0]  # width of widest face
         scalefactor = (width - 2*layout.getmargin()) / widest     # pixels per unit
         for face in sortedfaces :
