@@ -23,6 +23,10 @@ DRAWABLE = ['MESH', 'CURVE', 'SURFACE', 'META', 'FONT', 'ARMATURE', 'LATTICE']  
 
 NORMALERROR = 0.001                     # allowed difference for two normals being the same
 
+#   Debug settings
+DEBUGPRINT = True                       # enable debug print
+DEBUGMARKERS = True                     # add marking objects to scene
+
 #   Non-class functions
 
 def matrixlookat(eye, targetpt, up) :
@@ -646,5 +650,6 @@ class ImpostorMaker(bpy.types.Operator) :
         #   Lay out texture map
         texmapwidth = 256                                               # ***TEMP***
         self.buildcomposite(target, "/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
-        ####self.markimpostor(faces)                                    # Turn on if transform bugs to show faces.
+        if DEBUGMARKERS : 
+            self.markimpostor(faces)                                    # Turn on if transform bugs to show faces.
 
