@@ -122,20 +122,16 @@ class ImageComposite :
     """
     CHANNELS = 4                                    # RGBA
     
-    def __init__(self, filepath, width, height) :
+    def __init__(self, name, width, height) :
         #   RGBA image initialized to black transparent
-        name = os.path.splitext(os.path.basename(filepath))[0]          # name without path
-        if not name :
-            raise ValueError("Invalid file name for composite: \"%s\"" % (filename,))
-        if name in bpy.data.images :                                    # release old image because we are changing size
-            oldimg = bpy.data.images[name]
-            oldimg.user_clear
-            bpy.data.images.remove(oldimg)
-        bpy.ops.image.new(name=name, width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)  
-        self.image = bpy.data.images[name]          # must get by name
+        ####bpy.ops.image.new(name=name, width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)  
+        ####self.image = bpy.data.images[name]          # must get by name
+        self.image = bpy.data.images.new(name=name, width=width, height=height, alpha=True) 
+        #   Fill with transparent black
+        self.image.pixels[:] = [0.0 for n in range(height*width*self.CHANNELS)] # slow. Is there a better way?
         assert self.image, "ImageComposite image not stored properly" 
         print("ImageComposite size: (%d,%d)" % (width,height))      # ***TEMP***
-        self.image.filepath = filepath              # will be saved here  
+        ####self.image.filepath = filepath              # will be saved here  
         
     def getimage(self) :
         """
@@ -589,18 +585,15 @@ class ImpostorMaker(bpy.types.Operator) :
                 texture = node                      # found existing node
         if not texture :                            # if no existing texture node   
             texture = material.node_tree.nodes.new("ShaderNodeTexImage")    # BSDF shader with a texture image option
-            imgnode = material.node_tree.nodes['Image Texture']
+            imgnode = material.node_tree.nodes['Image Texture'] # just created by above
             assert imgnode, "No image texture node"
             bsdf = material.node_tree.nodes['Diffuse BSDF']
             assert bsdf, "No BSDF node"                 # We just created it, should exist
             material.node_tree.links.new(imgnode.outputs['Color'], bsdf.inputs['Color'])
             #   ***NO ALPHA YET - MAY NEED ANOTHER NODE***
             ####material.node_tree.links.new(imgnode.outputs['Alpha'], bsdf.inputs['Alpha'])
-        if texture.image :                          # if there was a previous image, get rid of it
-            print("Old image survived removal")     # ***TEMP***
-            oldimage = texture.image
-            texture.image = None
-            material.node_tree.nodes.remove(oldimage)     
+        if texture.image :                          # previous image should have been deleted above
+            raise RuntimeError("Clean up of image from previous run did not work")
         texture.image = image                       # attach new image to texture
         #   Connect up nodes
         
@@ -620,7 +613,8 @@ class ImpostorMaker(bpy.types.Operator) :
         sortedfaces = self.layoutcomposite(layout, faces)
         #   Rendering phase
         setnorender(target, True)                                           # hide target impostor object during render
-        outimg = self.compositefaces(filename, sortedfaces, layout)
+        imgname = IMPOSTORPREFIX + target.name
+        outimg = self.compositefaces(imgname, sortedfaces, layout)          # do the real work
         setnorender(target, False)                                          # hide target impostor object during render
         #   UV setup phase
         self.adduvlayer(target, sortedfaces, layout, margin)
@@ -638,13 +632,13 @@ class ImpostorMaker(bpy.types.Operator) :
             face.setuvs(target, rect, margin, size)         # set UV values for face
             face.dump()
         
-    def compositefaces(self, filename, faces, layout) :
+    def compositefaces(self, name, faces, layout) :
         """
         Composite list of faces into an image
         """
         (width, height) = layout.getsize()                              # final image dimensions
         rects = layout.getrects()
-        composite = ImageComposite(filename, width, height)
+        composite = ImageComposite(name, width, height)
         print("Rendering and pasting...") # ***TEMP***
         with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=True) as fd :       # create temp file for render
             for i in range(len(faces)) :
@@ -660,7 +654,7 @@ class ImpostorMaker(bpy.types.Operator) :
                 composite.paste(img, rect[0], rect[1])                      # paste into image
                 deleteimg(img)                                              # get rid of just-rendered image
         image = composite.getimage()
-        image.save()                 # save image to file
+        ####image.save()                 # save image to file
         return image                                                        # return image object
         
     def markimpostor(self, faces) :
@@ -702,9 +696,6 @@ class ImpostorMaker(bpy.types.Operator) :
             #   ***NEED TO TURN OFF RENDERING FOR ANY RENDERABLE OBJECTS NOT ON THE LIST***
             #   Do a limited dissolve on the target object to combine coplanar triangles into big faces. 
             self.limiteddissolve(context, target)     
-            ####faces = []
-            ####for poly in target.data.polygons:
-                ####faces.append(ImpostorFace(context, target, poly))           # build single poly face objects
             #   Make our object for each face
             faces = [ImpostorFace(context, target, poly) for poly in target.data.polygons]  # single poly face objects
             if DEBUGPRINT :
@@ -713,7 +704,7 @@ class ImpostorMaker(bpy.types.Operator) :
                     f.dump()
             #   Lay out texture map
             texmapwidth = 256                                               # ***TEMP***
-            self.buildcomposite(target, "/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
+            self.buildcomposite(target, "impostortex", faces, texmapwidth)                        # lay out, first try
             if DEBUGMARKERS : 
                 self.markimpostor(faces)                                    # Turn on if transform bugs to show faces.
         except (ValueError, RuntimeError) as message :                      # if trouble
