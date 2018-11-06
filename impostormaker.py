@@ -22,6 +22,7 @@ import os
 DRAWABLE = ['MESH', 'CURVE', 'SURFACE', 'META', 'FONT', 'ARMATURE', 'LATTICE']      # drawable types
 
 NORMALERROR = 0.001                     # allowed difference for two normals being the same
+IMPOSTORPREFIX = "IMP-"                 # our textures and materials begin with this
 
 #   Debug settings
 DEBUGPRINT = True                       # enable debug print
@@ -429,13 +430,13 @@ class ImpostorFace :
         """
         fd.truncate()                                                                   # clear file before rendering into it
         filename = fd.name
-        self.rendertofile(filename, width, height)                                 # render into temp file
+        self.rendertofile(filename, width, height)                                      # render into temp file
         print("Temp file: %s  (%d,%d)" % (filename, width, height))
         ####image = bpy.ops.image.new(name="Face render", width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)   # render result goes here
-        ####image.open(fd.name)                                                             # load rendered image
+        ####image.open(fd.name)                                                         # load rendered image
         bpy.data.images.load(filename, check_existing=True)
         imgname = os.path.basename(filename)    # Blender seems to want base name
-        image = bpy.data.images[imgname]                                                   # image object
+        image = bpy.data.images[imgname]                                                # image object
         assert image, "No image object found"
         assert image.size[0] == width, "Width different after render. Was %d, should be %d" % (image.size[0], width)
         assert image.size[1] == height, "Height different after render. Was %d, should be %d" % (image.size[1], height)
@@ -456,8 +457,7 @@ class ImpostorFace :
         assert me, "Dump - no mesh"
         if not me.uv_layers.active :
             raise RuntimeError("Target object has no UV coordinates yet.")          # need to create these first          
-            
-            
+                       
         for vert, vertex_index, loop_index in zip(self.scaledverts, self.vertexids, self.loopindices) :
             pt = faceplanematinv * vert                                             # point in face plane space
             assert abs(pt[2]  < 0.01), "Internal error: Vertex not on face plane"   # point must be on face plane, with Z = 0
@@ -560,7 +560,42 @@ class ImpostorMaker(bpy.types.Operator) :
             layout.getrect(width, height)           # lay out in layout object            
         layout.dump()                               # ***TEMP***
         return sortedfaces
-
+        
+    def outputcomposite(self, target, image) :
+        """
+        Output composite image to Blender material
+        """
+        material = None                             # no material yet.
+        assert not (target.data.materials is None), "Target has no materials list"
+        for matl in target.data.materials :
+            if matl.name.startswith(IMPOSTORPREFIX) :   # if starts with "IMP", use it
+                material = matl                     # keep this one
+                break
+        if not material :                           # if no existing "IMP" material
+            material = bpy.data.materials.new(name=IMPOSTORPREFIX + target.name)  # create it
+            material.use_nodes = True
+            target.data.materials.append(material)
+        if DEBUGPRINT :
+            print("Outputting to material \"%s\"." % (material.name,))
+        #   We have a material. Now we have to hook the image to it.
+        texture = None
+        assert not (material.node_tree.nodes is None), "Target has no node list"
+        for node in material.node_tree.nodes :      # search for existing node
+            if node.type == 'TEX_IMAGE' and node.name.startswith(IMPOSTORPREFIX) :
+                texture = node                      # found existing node
+        if not texture :                            # if no existing texture node
+            texture = material.node_tree.nodes.new("ShaderNodeTexImage")    # BSDF shader with a texture image option
+            imgnode = material.node_tree.nodes['Image Texture']
+            assert imgnode, "No image texture node"
+            bsdf = material.node_tree.nodes['Diffuse BSDF']
+            assert bsdf, "No BSDF node"                 # We just created it, should exist
+            outnode = imgnode.outputs['Color']
+            innode = bsdf.inputs['Color']
+            material.node_tree.links.new(outnode, innode)  # connect image node output to texture node input
+        texture.image = image                       # attach image to texture ***NOT WORKING***
+        #   Connect up nodes
+        
+            
         
     def buildcomposite(self, target, filename, faces, width=512, margin=9) :
         """
@@ -580,6 +615,8 @@ class ImpostorMaker(bpy.types.Operator) :
         setnorender(target, False)                                          # hide target impostor object during render
         #   UV setup phase
         self.adduvlayer(target, sortedfaces, layout, margin)
+        #   Output
+        self.outputcomposite(target, outimg)                                # save image in Blender world
         
     def adduvlayer(self, target, faces, layout, margin) :
         """
@@ -600,7 +637,7 @@ class ImpostorMaker(bpy.types.Operator) :
         rects = layout.getrects()
         composite = ImageComposite(filename, width, height)
         print("Rendering and pasting...") # ***TEMP***
-        with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=False) as fd :       # create temp file for render
+        with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=True) as fd :       # create temp file for render
             for i in range(len(faces)) :
                 print("Pasting face %d" % (i,)) # ***TEMP***
                 face = faces[i]
@@ -615,6 +652,7 @@ class ImpostorMaker(bpy.types.Operator) :
                 deleteimg(img)                                              # get rid of just-rendered image
         image = composite.getimage()
         image.save()                 # save image to file
+        return image                                                        # return image object
         
     def markimpostor(self, faces) :
         """
