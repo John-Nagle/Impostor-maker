@@ -452,14 +452,12 @@ class ImpostorFace :
         me = self.target.data                       # mesh info
         assert me, "Dump - no mesh"
         if not me.uv_layers.active :
-            raise RuntimeError("Target object has no UV coordinates yet.")          # need to create these first          
-                       
+            raise RuntimeError("Target object has no UV coordinates yet.")          # need to create these first                                 
         for vert, vertex_index, loop_index in zip(self.scaledverts, self.vertexids, self.loopindices) :
             pt = faceplanematinv * vert                                             # point in face plane space
             assert abs(pt[2]  < 0.01), "Internal error: Vertex not on face plane"   # point must be on face plane, with Z = 0
             fractpt = ((pt[0] + self.facebounds[0]*0.5) / (self.facebounds[0]),
                        (pt[1] + self.facebounds[1]*0.5) / (self.facebounds[1]))     # point in 0..1 space on face plane
-            ####fractpt = (1.0-fractpt[0], fractpt[1])                                  # ***TEMP FIX*** u is backwards
             #   UV points are in 0..1 over entire image space
             uvpt = ((insetrect[0] + fractpt[0] * (insetrect[2]-insetrect[0])) / finalimagesize[0],
                     (insetrect[1] + fractpt[1] * (insetrect[3]-insetrect[1])) / finalimagesize[1])
@@ -628,7 +626,13 @@ class ImpostorMaker(bpy.types.Operator) :
         rects = layout.getrects()
         size = layout.getsize()
         print("Adding UV info.")
-        for face, rect in zip(faces, rects) :       # iterate over arrays in sync
+        me = target.data                                    # mesh info
+        assert me, "Dump - no mesh"
+        if not me.uv_layers.active :                        # if no UV layer to modify
+            #   There should be some way to do this with data, not ops.
+            bpy.context.scene.objects.active = target       # make target the active object, which it should be anyway
+            bpy.ops.mesh.uv_texture_add()                   # add UVs to active object
+        for face, rect in zip(faces, rects) :               # iterate over arrays in sync
             face.setuvs(target, rect, margin, size)         # set UV values for face
             face.dump()
         
