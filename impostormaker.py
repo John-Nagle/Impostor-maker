@@ -562,7 +562,7 @@ class ImpostorMaker(bpy.types.Operator) :
         material = None                             # no material yet.
         assert not (target.data.materials is None), "Target has no materials list"
         for matl in target.data.materials :
-            if matl.name.startswith(IMPOSTORPREFIX) :   # if starts with "IMP", use it
+            if matl and matl.name.startswith(IMPOSTORPREFIX) :   # if starts with "IMP", use it
                 material = matl                     # keep this one
                 break
         if not material :                           # if no existing "IMP" material
@@ -629,8 +629,7 @@ class ImpostorMaker(bpy.types.Operator) :
         me = target.data                                    # mesh info
         assert me, "Dump - no mesh"
         if not me.uv_layers.active :                        # if no UV layer to modify
-            #   There should be some way to do this with data, not ops.
-            me.uv_texture_add()                             # try adding to data layer directly
+            me.uv_texture_add()                             # add UV layer
             ####bpy.context.scene.objects.active = target       # make target the active object, which it should be anyway
             ####bpy.ops.mesh.uv_texture_add()                   # add UVs to active object
         for face, rect in zip(faces, rects) :               # iterate over arrays in sync
