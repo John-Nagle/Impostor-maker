@@ -580,19 +580,28 @@ class ImpostorMaker(bpy.types.Operator) :
         #   We have a material. Now we have to hook the image to it.
         texture = None
         assert not (material.node_tree.nodes is None), "Target has no node list"
+        while "Image Texture" in material.node_tree.nodes : # clean out old image textures
+            imgnode = material.node_tree.nodes['Image Texture']
+            material.node_tree.nodes.remove(imgnode)
+            print("Removed old image texture")      # ***TEMP***
         for node in material.node_tree.nodes :      # search for existing node
             if node.type == 'TEX_IMAGE' and node.name.startswith(IMPOSTORPREFIX) :
                 texture = node                      # found existing node
-        if not texture :                            # if no existing texture node
+        if not texture :                            # if no existing texture node   
             texture = material.node_tree.nodes.new("ShaderNodeTexImage")    # BSDF shader with a texture image option
             imgnode = material.node_tree.nodes['Image Texture']
             assert imgnode, "No image texture node"
             bsdf = material.node_tree.nodes['Diffuse BSDF']
             assert bsdf, "No BSDF node"                 # We just created it, should exist
-            outnode = imgnode.outputs['Color']
-            innode = bsdf.inputs['Color']
-            material.node_tree.links.new(outnode, innode)  # connect image node output to texture node input
-        texture.image = image                       # attach image to texture ***NOT WORKING***
+            material.node_tree.links.new(imgnode.outputs['Color'], bsdf.inputs['Color'])
+            #   ***NO ALPHA YET - MAY NEED ANOTHER NODE***
+            ####material.node_tree.links.new(imgnode.outputs['Alpha'], bsdf.inputs['Alpha'])
+        if texture.image :                          # if there was a previous image, get rid of it
+            print("Old image survived removal")     # ***TEMP***
+            oldimage = texture.image
+            texture.image = None
+            material.node_tree.nodes.remove(oldimage)     
+        texture.image = image                       # attach new image to texture
         #   Connect up nodes
         
             
