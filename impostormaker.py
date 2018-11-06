@@ -639,22 +639,21 @@ class ImpostorMaker(bpy.types.Operator) :
         (width, height) = layout.getsize()                              # final image dimensions
         rects = layout.getrects()
         composite = ImageComposite(name, width, height)
-        print("Rendering and pasting...") # ***TEMP***
         with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=True) as fd :       # create temp file for render
             for i in range(len(faces)) :
-                print("Pasting face %d" % (i,)) # ***TEMP***
+                ####self.report({'INFO'},"Rendering, %d%% done." % (int((100*i)/len(faces)),))    # progress report.
                 face = faces[i]
                 rect = rects[i]
                 width = rect[2] - rect[0]
                 height = rect[3] - rect[1]
-                print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
+                if DEBUGPRINT :
+                    print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
                 camera = bpy.data.objects['Camera']                         # CHECK - may not always be current camera
                 face.setupcamera(camera, 5.0, 0.05)
                 img = face.rendertoimage(fd, width, height)
                 composite.paste(img, rect[0], rect[1])                      # paste into image
                 deleteimg(img)                                              # get rid of just-rendered image
         image = composite.getimage()
-        ####image.save()                 # save image to file
         return image                                                        # return image object
         
     def markimpostor(self, faces) :
