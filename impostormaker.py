@@ -588,7 +588,7 @@ class ImpostorMaker(bpy.types.Operator) :
             bsdf = material.node_tree.nodes['Diffuse BSDF']
             assert bsdf, "No BSDF node"                 # We just created it, should exist
             material.node_tree.links.new(imgnode.outputs['Color'], bsdf.inputs['Color'])
-            #   ***NO ALPHA YET - MAY NEED ANOTHER NODE***
+            #   ***NO ALPHA YET - NEED ANOTHER NODE***
             ####material.node_tree.links.new(imgnode.outputs['Alpha'], bsdf.inputs['Alpha'])
         if texture.image :                          # previous image should have been deleted above
             raise RuntimeError("Clean up of image from previous run did not work")
@@ -630,8 +630,9 @@ class ImpostorMaker(bpy.types.Operator) :
         assert me, "Dump - no mesh"
         if not me.uv_layers.active :                        # if no UV layer to modify
             #   There should be some way to do this with data, not ops.
-            bpy.context.scene.objects.active = target       # make target the active object, which it should be anyway
-            bpy.ops.mesh.uv_texture_add()                   # add UVs to active object
+            me.uv_texture_add()                             # try adding to data layer directly
+            ####bpy.context.scene.objects.active = target       # make target the active object, which it should be anyway
+            ####bpy.ops.mesh.uv_texture_add()                   # add UVs to active object
         for face, rect in zip(faces, rects) :               # iterate over arrays in sync
             face.setuvs(target, rect, margin, size)         # set UV values for face
             face.dump()
