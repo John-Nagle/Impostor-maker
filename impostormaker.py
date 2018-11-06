@@ -25,7 +25,7 @@ NORMALERROR = 0.001                     # allowed difference for two normals bei
 
 #   Debug settings
 DEBUGPRINT = True                       # enable debug print
-DEBUGMARKERS = True                     # add marking objects to scene
+DEBUGMARKERS = False                    # add marking objects to scene
 
 #   Non-class functions
 
@@ -504,10 +504,7 @@ class ImpostorMaker(bpy.types.Operator) :
         """ Constructor """
         pass
     
-    def errormsg(self, msg) :
-        print("ERROR: " + msg)          # ***TEMP*** until we find a better way
-
-    def execute(self, context):         # execute() is called by blender when running the operator.
+    def execute(self, context):                     # execute() is called by blender when running the operator.
         """
         Target impostor is last selected object.
         Objects to render are all other selected objects.
@@ -515,20 +512,22 @@ class ImpostorMaker(bpy.types.Operator) :
         and all other visible objects will be rendered.
         """
         if not context.selected_objects :
-            self.errormsg("Nothing selected.")
-            return {'FINISHED'}
+            self.report({'ERROR_INVALID_INPUT'}, "Nothing selected.")
+            return {'CANCELLED'}
         target = context.selected_objects[0]        # target impostor (last selection is first?)
         if target.type != 'MESH' :
-            self.errormsg("Impostor \"%s\"must be a mesh." % (target.name,))
-            return {'FINISHED'}
+            self.report({'ERROR_INVALID_INPUT'}, "Impostor \"%s\"must be a mesh." % (target.name,))
+            return {'CANCELLED'}
         sources = context.selected_objects[:-1]     # source objects
         if not sources :                            # if no source objects
             sources = [obj for obj in context.visible_objects if obj != target] # everything but target
         sources = [obj for obj in sources if obj.type in DRAWABLE]  # only drawables
         if not sources :
-            self.errormsg("Nothing drawable to draw on the impostor.")
-            return {'FINISHED'}
-        self.buildimpostor(context, target, sources)
+            self.report({'ERROR_INVALID_INPUT'}, "No drawable objects to draw on the impostor.")
+            return {'CANCELLED'}
+        status = self.buildimpostor(context, target, sources)   # do the work
+        if status :                                 # if trouble
+            self.report({'ERROR'}, status)          # report error, but treat as finished - we may have changed some state
         return {'FINISHED'}                         # this lets blender know the operator finished successfully.
                 
     def limiteddissolve(self, context, target) :
@@ -552,7 +551,6 @@ class ImpostorMaker(bpy.types.Operator) :
         #   Widest faces first
         width = layout.getsize()[0]
         sortedfaces = sorted(faces, key = lambda f : f.getfacebounds()[0], reverse=True)
-        ####sortedfaces = faces # ***TEMP DEBUG***
         widest = sortedfaces[0].getfacebounds()[0]  # width of widest face
         scalefactor = (width - 2*layout.getmargin()) / widest     # pixels per unit
         for face in sortedfaces :
@@ -615,7 +613,6 @@ class ImpostorMaker(bpy.types.Operator) :
                 img = face.rendertoimage(fd, width, height)
                 composite.paste(img, rect[0], rect[1])                      # paste into image
                 deleteimg(img)                                              # get rid of just-rendered image
-                ####break #### ***TEMP TEST*** one face only 
         image = composite.getimage()
         image.save()                 # save image to file
         
@@ -625,31 +622,55 @@ class ImpostorMaker(bpy.types.Operator) :
         Used to check transforms.
         """
         redmatl = gettestmatl("Red diffuse", (1, 0, 0))
+        greenmatl = gettestmatl("Green diffuse", (0, 1, 0))
         for face in faces:
+            #   Put plane on face
             pos = face.worldtransform * face.center                 # dummy start pos
             bpy.ops.mesh.primitive_cube_add(location=pos)
             bpy.context.object.data.materials.append(redmatl)
-            bpy.context.object.name = "Marker cube"
+            bpy.context.object.name = "Marker-face"
             xform = face.getfaceplanetransform()                    # get positioning transform
             xformworld = face.worldtransform * xform                # in world space
             bpy.context.object.matrix_world = xformworld            # apply rotation
             bpy.context.object.scale = mathutils.Vector((face.facebounds[0], face.facebounds[1], 0.01))*0.5                  # apply scale
+            #   Put normal on face - long thin cube in normal dir
+            pos = face.worldtransform * face.center                 # dummy start pos
+            bpy.ops.mesh.primitive_cube_add(location=pos)
+            bpy.context.object.data.materials.append(greenmatl)
+            bpy.context.object.name = "Marker-normal"
+            xform = face.getfaceplanetransform()                    # get positioning transform
+            xformworld = face.worldtransform * xform                # in world space
+            bpy.context.object.matrix_world = xformworld            # apply rotation
+            #   ***NEED TO MOVE ORIGIN TO END***
+            bpy.context.object.scale = mathutils.Vector((0.01, 0.01, 4.0))*0.5                  # apply scale
+
 
                 
     def buildimpostor(self, context, target, sources) :
-        print("Target: " + target.name) 
-        print("Sources: " + ",".join([obj.name for obj in sources]))  
-        #   Do a limited dissolve on the target object to combine coplanar triangles into big faces. 
-        self.limiteddissolve(context, target)     
-        faces = []
-        for poly in target.data.polygons:
-            faces.append(ImpostorFace(context, target, poly))       # build single poly face objects
-        print("Faces")
-        for f in faces :
-            f.dump()
-        #   Lay out texture map
-        texmapwidth = 256                                               # ***TEMP***
-        self.buildcomposite(target, "/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
-        if DEBUGMARKERS : 
-            self.markimpostor(faces)                                    # Turn on if transform bugs to show faces.
+        status = None                                                       # returned status
+        try: 
+            if DEBUGPRINT :
+                print("Target: " + target.name) 
+                print("Sources: " + ",".join([obj.name for obj in sources]))  
+            #   ***NEED TO TURN OFF RENDERING FOR ANY RENDERABLE OBJECTS NOT ON THE LIST***
+            #   Do a limited dissolve on the target object to combine coplanar triangles into big faces. 
+            self.limiteddissolve(context, target)     
+            ####faces = []
+            ####for poly in target.data.polygons:
+                ####faces.append(ImpostorFace(context, target, poly))           # build single poly face objects
+            #   Make our object for each face
+            faces = [ImpostorFace(context, target, poly) for poly in target.data.polygons]  # single poly face objects
+            if DEBUGPRINT :
+                print("Faces")
+                for f in faces :
+                    f.dump()
+            #   Lay out texture map
+            texmapwidth = 256                                               # ***TEMP***
+            self.buildcomposite(target, "/tmp/impostortexture.png", faces, texmapwidth)                        # lay out, first try
+            if DEBUGMARKERS : 
+                self.markimpostor(faces)                                    # Turn on if transform bugs to show faces.
+        except (ValueError, RuntimeError) as message :                      # if trouble
+            status = str(message)                                           # message for user            
+        return status                                                       # done
+            
 
