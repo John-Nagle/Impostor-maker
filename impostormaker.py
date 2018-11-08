@@ -562,41 +562,27 @@ class ImpostorMaker(bpy.types.Operator) :
         """
         material = None                             # no material yet.
         assert not (target.data.materials is None), "Target has no materials list"
-        for matl in target.data.materials :
-            if matl and matl.name.startswith(IMPOSTORPREFIX) :   # if starts with "IMP", use it
-                material = matl                     # keep this one
-                break
-        if not material :                           # if no existing "IMP" material
-            material = bpy.data.materials.new(name=IMPOSTORPREFIX + target.name)  # create it
-            material.use_nodes = True
-            target.data.materials.append(material)
+        target.data.materials.clear()               # clear out any old materials
+        material = bpy.data.materials.new(name=IMPOSTORPREFIX + target.name)  # create fresh material
+        material.use_nodes = True
+        target.data.materials.append(material)
         if DEBUGPRINT :
             print("Outputting to material \"%s\"." % (material.name,))
         #   We have a material. Now we have to hook the image to it.
-        texture = None
-        assert not (material.node_tree.nodes is None), "Target has no node list"
-        while "Image Texture" in material.node_tree.nodes : # clean out old image textures
-            imgnode = material.node_tree.nodes['Image Texture']
-            material.node_tree.nodes.remove(imgnode)
-            print("Removed old image texture")      # ***TEMP***
-        for node in material.node_tree.nodes :      # search for existing node
-            if node.type == 'TEX_IMAGE' and node.name.startswith(IMPOSTORPREFIX) :
-                texture = node                      # found existing node
         #   Set up nodes to allow viewing the result. This has no effect on the output file.
-        if not texture :                            # if no existing texture node   
-            texture = material.node_tree.nodes.new(type='ShaderNodeTexImage')    # BSDF shader with a texture image option
-            imgnode = material.node_tree.nodes['Image Texture'] # just created by above
-            materialoutput = material.node_tree.nodes['Material Output'] # just created by above
-            bsdf = material.node_tree.nodes['Diffuse BSDF']
-            mixer = material.node_tree.nodes.new(type='ShaderNodeMixShader')  # for applying alpha
-            transpnode = material.node_tree.nodes.new(type='ShaderNodeBsdfTransparent')   # just to generate black transparent
-            transpnode.inputs[0].default_value = mathutils.Vector((0.0, 0.0, 0.0, 0.0))   # black transparent 
-            material.node_tree.links.new(imgnode.outputs['Color'], bsdf.inputs['Color']) # Image color -> BSDF shader
-            material.node_tree.links.new(imgnode.outputs['Alpha'], mixer.inputs['Fac']) # Image alpha channel -> Mixer control
-            material.node_tree.links.new(transpnode.outputs['BSDF'], mixer.inputs[1]) # Black transparent -> Mixer input 
-            material.node_tree.links.new(bsdf.outputs['BSDF'], mixer.inputs[2]) # Shader output -> Mixer input 
-            material.node_tree.links.new(mixer.outputs['Shader'], materialoutput.inputs['Surface']) # 
-            material.game_settings.alpha_blend = 'CLIP'   # Needed to get alpha control on screen
+        texture = material.node_tree.nodes.new(type='ShaderNodeTexImage')    # BSDF shader with a texture image option
+        imgnode = material.node_tree.nodes['Image Texture'] # just created by above
+        materialoutput = material.node_tree.nodes['Material Output'] # just created by above
+        bsdf = material.node_tree.nodes['Diffuse BSDF']
+        mixer = material.node_tree.nodes.new(type='ShaderNodeMixShader')  # for applying alpha
+        transpnode = material.node_tree.nodes.new(type='ShaderNodeBsdfTransparent')   # just to generate black transparent
+        transpnode.inputs[0].default_value = mathutils.Vector((0.0, 0.0, 0.0, 0.0))   # black transparent 
+        material.node_tree.links.new(imgnode.outputs['Color'], bsdf.inputs['Color']) # Image color -> BSDF shader
+        material.node_tree.links.new(imgnode.outputs['Alpha'], mixer.inputs['Fac']) # Image alpha channel -> Mixer control
+        material.node_tree.links.new(transpnode.outputs['BSDF'], mixer.inputs[1]) # Black transparent -> Mixer input 
+        material.node_tree.links.new(bsdf.outputs['BSDF'], mixer.inputs[2]) # Shader output -> Mixer input 
+        material.node_tree.links.new(mixer.outputs['Shader'], materialoutput.inputs['Surface']) # 
+        material.game_settings.alpha_blend = 'CLIP'   # Needed to get alpha control on screen
         if texture.image :                          # previous image should have been deleted above
             raise RuntimeError("Clean up of image from previous run did not work")
         texture.image = image                       # attach new image to texture
