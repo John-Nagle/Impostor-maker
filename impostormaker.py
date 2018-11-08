@@ -115,6 +115,12 @@ def deleteimg(img) :
     img.user_clear                          # clear this object of users
     ###bpy.context.scene.objects.unlink(obj)   # unlink the object from the scene
     bpy.data.images.remove(img)            # delete the object from the data block
+    
+def counttriangles(obj) :
+    """
+    Triangle count of object
+    """
+    return sum([len(face.vertices)-2 for face in obj.data.polygons])   # tris = verts-2
 
 class ImageComposite :
     """
@@ -148,11 +154,12 @@ class ImageComposite :
         if (inw + x > outw or inh + y > outh or     # will it fit?
             x < 0 or y < 0) :
             raise ValueError("Image paste of (%d,%d) at (%d,%d) into (%d,%d), won't fit." % (inw, inh, x, y, outw, outh))  
-        print("Pasting (%d,%d) at (%d,%d) into (%d,%d), input length %d, output length %d." % (inw, inh, x, y, outw, outh, len(img.pixels), len(self.image.pixels)))  # ***TEMP***
+        if DEBUGPRINT :
+            print("Pasting (%d,%d) at (%d,%d) into (%d,%d), input length %d, output length %d." % (inw, inh, x, y, outw, outh, len(img.pixels), len(self.image.pixels))) 
         if x == 0 and inw == outw :                 # easy case, full rows
             start = y*outw*ImageComposite.CHANNELS                 # offset into image
             end = start + inw*inh*ImageComposite.ImageComposite.CHANNELS
-            print("Paste image to %d:%d length %d" % (start, end, len(img.pixels)))   # ***TEMP***
+            #### print("Paste image to %d:%d length %d" % (start, end, len(img.pixels)))   # ***TEMP***
             self.image.pixels[start:end] = img.pixels[:]      # do paste all at once
         else :                                      # hard case, row by row
             outpos = (x + y*outw) * ImageComposite.CHANNELS        # start here in old image
@@ -348,7 +355,6 @@ class ImpostorFace :
         """
         #### print("Base edge" + str(self.baseedge))    # ***TEMP***
         xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
-        ### xvec = -xvec # ***TEMP***
         upvec = xvec.cross(self.normal)                                 # up vector
         orientmat = matrixlookat(self.center, self.center - self.normal, upvec)     # rotation to proper orientation 
         return orientmat                                                
@@ -362,7 +368,8 @@ class ImpostorFace :
         if self.poly.normal.dot(cameranormal) < 0 :
             cameranormal = -cameranormal
         upvec = xvec.cross(self.normal)                                # up vector
-        print("Getcameratransform: upvec: %s, normal: %s  camera normal %s" % (upvec, self.normal, cameranormal))
+        if DEBUGPRINT: 
+            print("Getcameratransform: upvec: %s, normal: %s  camera normal %s" % (upvec, self.normal, cameranormal))
         orientmat = matrixlookat(mathutils.Vector((0,0,0)), -cameranormal, upvec)     # rotation to proper orientation 
         camerapos = self.center + cameranormal*disttocamera              # location of camera, object coords
         posmat = mathutils.Matrix.Translation(camerapos)
@@ -428,9 +435,6 @@ class ImpostorFace :
         fd.truncate()                                                                   # clear file before rendering into it
         filename = fd.name
         self.rendertofile(filename, width, height)                                      # render into temp file
-        print("Temp file: %s  (%d,%d)" % (filename, width, height))
-        ####image = bpy.ops.image.new(name="Face render", width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)   # render result goes here
-        ####image.open(fd.name)                                                         # load rendered image
         bpy.data.images.load(filename, check_existing=True)
         imgname = os.path.basename(filename)    # Blender seems to want base name
         image = bpy.data.images[imgname]                                                # image object
@@ -462,7 +466,8 @@ class ImpostorFace :
             #   UV points are in 0..1 over entire image space
             uvpt = ((insetrect[0] + fractpt[0] * (insetrect[2]-insetrect[0])) / finalimagesize[0],
                     (insetrect[1] + fractpt[1] * (insetrect[3]-insetrect[1])) / finalimagesize[1])
-            print("UV: Vertex (%1.2f,%1.2f) -> face point (%1.2f, %1.2f) -> UV (%1.3f, %1.3f)" % (pt[0], pt[1], fractpt[0], fractpt[1], uvpt[0], uvpt[1]))
+            if DEBUGPRINT :
+                print("UV: Vertex (%1.2f,%1.2f) -> face point (%1.2f, %1.2f) -> UV (%1.3f, %1.3f)" % (pt[0], pt[1], fractpt[0], fractpt[1], uvpt[0], uvpt[1]))
             me.uv_layers.active.data[loop_index].uv.x = uvpt[0]         # apply UV indices
             me.uv_layers.active.data[loop_index].uv.y = uvpt[1]
         
@@ -506,6 +511,7 @@ class ImpostorMaker(bpy.types.Operator) :
         If only one object is selected, it is the impostor, 
         and all other visible objects will be rendered.
         """
+        #   Sanity checks before starting
         if not context.selected_objects :
             self.report({'ERROR_INVALID_INPUT'}, "Nothing selected.")
             return {'CANCELLED'}
@@ -519,7 +525,11 @@ class ImpostorMaker(bpy.types.Operator) :
         sources = [obj for obj in sources if obj.type in DRAWABLE]  # only drawables
         if not sources :
             self.report({'ERROR_INVALID_INPUT'}, "No drawable objects to draw on the impostor.")
+            return {'CANCELLED'}            
+        if counttriangles(target) > sum(counttriangles(obj) for obj in sources) : 
+            self.report({'ERROR_INVALID_INPUT'}, "The impostor \"%s\" has more triangles than the input objects. Selected wrong object?" % (target.name,))
             return {'CANCELLED'}
+
         status = self.buildimpostor(context, target, sources)   # do the work
         if status :                                 # if trouble
             self.report({'ERROR'}, status)          # report error, but treat as finished - we may have changed some state
@@ -625,7 +635,8 @@ class ImpostorMaker(bpy.types.Operator) :
             me.uv_texture_add()                             # add UV layer
         for face, rect in zip(faces, rects) :               # iterate over arrays in sync
             face.setuvs(target, rect, margin, size)         # set UV values for face
-            face.dump()
+            if DEBUGPRINT :
+                face.dump()
             
     def addlamp(self, scene, name="Rendering lamp", lamptype='SUN') :
         """
@@ -710,8 +721,8 @@ class ImpostorMaker(bpy.types.Operator) :
         status = None                                                       # returned status
         try: 
             if DEBUGPRINT :
-                print("Target: " + target.name) 
-                print("Sources: " + ",".join([obj.name for obj in sources]))  
+                print("Target: %s (%d triangles)" % (target.name, counttriangles(target))) 
+                print("Sources: %s (%d triangles) " % (",".join([obj.name for obj in sources]), sum(counttriangles(obj) for obj in sources)))  
             #   ***NEED TO TURN OFF RENDERING FOR ANY RENDERABLE OBJECTS NOT ON THE LIST***
             #   Do a limited dissolve on the target object to combine coplanar triangles into big faces. 
             self.limiteddissolve(context, target)     
