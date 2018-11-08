@@ -258,7 +258,6 @@ class ImpostorFace :
         rot = (target.matrix_world.to_3x3().normalized()).to_4x4() # rotation only
         trans = mathutils.Matrix.Translation(target.matrix_world.to_translation())
         self.worldtransform = trans * rot   # transform to global coords
-        ####self.worldtransform = target.matrix_world  # transform to global coords
         assert target.type == "MESH", "Must be a mesh target"
         me = target.data                    # mesh info
         vertices = me.vertices
@@ -308,9 +307,6 @@ class ImpostorFace :
         #   All vertices examined.  
         if not self.normal :
             raise RuntimeError("Unable to compute a normal for a face of \"%s\"." % (target.name,)) # degenerate geometry of some kind  
-        ####if poly.normal.dot(self.normal) > 0.0 : # if our normal is backwards
-        ####    print("Flipping normal: %s" % ((self.normal),))
-        ####    self.normal = -self.normal          # invert ours  
         self.center = self.center / poly.loop_total # average to get center of face         
         print("  Face normal: (%1.4f,%1.4f,%1.4f)" % (self.normal[0],self.normal[1],self.normal[2])) 
         #   Compute bounding box of face.  Use longest edge to orient the bounding box
@@ -319,7 +315,6 @@ class ImpostorFace :
         faceplanemat = self.getfaceplanetransform()                                 # transform object points onto face plane
         faceplanematinv = faceplanemat.copy()
         faceplanematinv.invert()                                                    # transform face plane back to object points
-        ####pts = [faceplanematinv * me.vertices[vid].co for vid in self.vertexids]     # points transformed onto face, now 2D
         pts = [faceplanematinv * vert for vert in self.scaledverts]                 # vertices transformed onto face, now 2D
         for pt in pts :                                                             # all points must be on face plane
             assert abs(pt[2]  < 0.01), "Internal error: Vertex not on face plane"   # point must be on face plane
@@ -417,15 +412,17 @@ class ImpostorFace :
         """
         heightalt = int(math.floor((self.facebounds[1] / self.facebounds[0]) * width))     # user sets width, height is just enough for info
         assert abs(height-heightalt) < 2, "Height estimate is wrong"                    # ***TEMP*** not sure about this
-        bpy.context.scene.render.filepath = filename
-        bpy.context.scene.render.resolution_x = width
-        bpy.context.scene.render.resolution_y = height
-        bpy.context.scene.render.pixel_aspect_x = 1.0
-        bpy.context.scene.render.pixel_aspect_y = 1.0
-        bpy.context.scene.render.resolution_percentage = 100                            # mandatory, or we get undersized output
-        bpy.context.scene.render.image_settings.color_mode = 'RGBA'                     # ask for alpha channel
-        bpy.context.scene.render.alpha_mode = 'TRANSPARENT'                             # transparent background, Blender renderer
-        bpy.context.scene.cycles.film_transparent = True                                # transparent background, Cycles renderer
+        scene = bpy.context.scene
+        scene.render.filepath = filename
+        scene.render.resolution_x = width
+        scene.render.resolution_y = height
+        scene.render.pixel_aspect_x = 1.0
+        scene.render.pixel_aspect_y = 1.0
+        scene.render.resolution_percentage = 100                                        # mandatory, or we get undersized output
+        scene.render.image_settings.color_mode = 'RGBA'                                 # ask for alpha channel
+        scene.render.alpha_mode = 'TRANSPARENT'                                         # transparent background, Blender renderer
+        scene.cycles.film_transparent = True                                            # transparent background, Cycles renderer
+        ####renderout = scene.render.render(write_still=True)   # ***TEMP TEST***
         bpy.ops.render.render(write_still=True) 
         
     def rendertoimage(self, fd, width, height) :
@@ -632,7 +629,12 @@ class ImpostorMaker(bpy.types.Operator) :
         me = target.data                                    # mesh info
         assert me, "Dump - no mesh"
         if not me.uv_layers.active :                        # if no UV layer to modify
-            me.uv_texture_add()                             # add UV layer
+            #   Don't know how to do this at the data layer. Have to do it with an operator.
+            oldactive = bpy.context.scene.objects.active
+            bpy.context.scene.objects.active = target
+            bpy.ops.mesh.uv_texture_add()
+            bpy.context.scene.objects.active = oldactive
+            ####me.uv_layers.uv_texture_add()                             # add UV layer
         for face, rect in zip(faces, rects) :               # iterate over arrays in sync
             face.setuvs(target, rect, margin, size)         # set UV values for face
             if DEBUGPRINT :
