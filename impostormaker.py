@@ -394,10 +394,13 @@ class ImpostorFace :
         """
         Set camera params
         """
-        camera.data.ortho_scale = self.getcameraorthoscale()[0] * (1.0+margin)   # width of bounds, plus debug margin if desired
+        camera.data.ortho_scale = self.getcameraorthoscale()[0] * (1.0+margin)          # width of bounds, plus debug margin if desired
         camera.matrix_world = self.getcameratransform(dist)
         camera.data.type = 'ORTHO'
-
+        
+    def setuplamp(self, lamp, dist) :
+        #   Lamp, for diffuse lighting, points in same direction as camera.
+        lamp.matrix_world = self.getcameratransform(dist)
         
     def rendertofile(self, filename, width, height) :
         """
@@ -635,15 +638,40 @@ class ImpostorMaker(bpy.types.Operator) :
         for face, rect in zip(faces, rects) :               # iterate over arrays in sync
             face.setuvs(target, rect, margin, size)         # set UV values for face
             face.dump()
+            
+    def addlamp(self, scene, name="Rendering lamp", lamptype='SUN') :
+        """
+        Create a lamp object and plug it into the scene
+        """
+        ####scene = bpy.context.scene
+        # Create new lamp datablock
+        lamp_data = bpy.data.lamps.new(name=name, type=lamptype)
+
+        # Create new object with our lamp datablock
+        lamp = bpy.data.objects.new(name=name, object_data=lamp_data)
+
+        # Link lamp object to the scene so it'll appear in this scene
+        scene.objects.link(lamp)
+
+        # Place lamp to a specified location
+        ####lamp_object.location = (5.0, 5.0, 5.0)
+
+        # And finally select it make active
+        ####lamp_object.select = True
+        scene.objects.active = lamp
+        return lamp
         
     def compositefaces(self, name, faces, layout) :
         """
         Composite list of faces into an image
         """
+        CAMERADIST = 5.0                                                # camera 5m back from object - somewhat arbitrary
         (width, height) = layout.getsize()                              # final image dimensions
         rects = layout.getrects()
         composite = ImageComposite(name, width, height)
+        scene = bpy.context.scene
         with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=True) as fd :       # create temp file for render
+            lamp = self.addlamp(scene)                          # temporary lamp for rendering
             for i in range(len(faces)) :
                 ####self.report({'INFO'},"Rendering, %d%% done." % (int((100*i)/len(faces)),))    # progress report.
                 face = faces[i]
@@ -653,11 +681,16 @@ class ImpostorMaker(bpy.types.Operator) :
                 if DEBUGPRINT :
                     print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
                 camera = bpy.data.objects['Camera']                         # CHECK - may not always be current camera
-                face.setupcamera(camera, 5.0, 0.05)
+                face.setupcamera(camera, CAMERADIST, 0.05)                  # point camera
+                face.setuplamp(lamp, CAMERADIST + 1.0)                      # lamp behind camera
+                print("Lamp location: %s" % (lamp.location,))               # ***TEMP***
                 img = face.rendertoimage(fd, width, height)
                 composite.paste(img, rect[0], rect[1])                      # paste into image
                 deleteimg(img)                                              # get rid of just-rendered image
-        image = composite.getimage()
+            #   Cleanup 
+            scene.objects.unlink(lamp)                                      # remove from scene
+            ####bpy.data.lamps.remove(lamp)                                 # remove from lamps
+        image = composite.getimage()                                        # composited image
         return image                                                        # return image object
         
     def markimpostor(self, faces) :
