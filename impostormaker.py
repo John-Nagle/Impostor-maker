@@ -584,15 +584,20 @@ class ImpostorMaker(bpy.types.Operator) :
         for node in material.node_tree.nodes :      # search for existing node
             if node.type == 'TEX_IMAGE' and node.name.startswith(IMPOSTORPREFIX) :
                 texture = node                      # found existing node
+        #   Set up nodes to allow viewing the result. This has no effect on the output file.
         if not texture :                            # if no existing texture node   
-            texture = material.node_tree.nodes.new("ShaderNodeTexImage")    # BSDF shader with a texture image option
+            texture = material.node_tree.nodes.new(type='ShaderNodeTexImage')    # BSDF shader with a texture image option
             imgnode = material.node_tree.nodes['Image Texture'] # just created by above
-            assert imgnode, "No image texture node"
+            materialoutput = material.node_tree.nodes['Material Output'] # just created by above
             bsdf = material.node_tree.nodes['Diffuse BSDF']
-            assert bsdf, "No BSDF node"                 # We just created it, should exist
-            material.node_tree.links.new(imgnode.outputs['Color'], bsdf.inputs['Color'])
-            #   ***NO ALPHA YET - NEED ANOTHER NODE***
-            ####material.node_tree.links.new(imgnode.outputs['Alpha'], bsdf.inputs['Alpha'])
+            mixer = material.node_tree.nodes.new(type='ShaderNodeMixShader')  # for applying alpha
+            transpnode = material.node_tree.nodes.new(type='ShaderNodeBsdfTransparent')   # just to generate black transparent
+            material.node_tree.links.new(imgnode.outputs['Color'], bsdf.inputs['Color']) # Image color -> BSDF shader
+            material.node_tree.links.new(imgnode.outputs['Alpha'], mixer.inputs['Fac']) # Image alpha channel -> Mixer control
+            material.node_tree.links.new(transpnode.outputs['BSDF'], mixer.inputs[1]) # Black transparent -> Mixer input 
+            material.node_tree.links.new(bsdf.outputs['BSDF'], mixer.inputs[2]) # Shader output -> Mixer input 
+            material.node_tree.links.new(mixer.outputs['Shader'], materialoutput.inputs['Surface']) # 
+            #   ***NO ALPHA YET - NEED ANOTHER CONNECTION***
         if texture.image :                          # previous image should have been deleted above
             raise RuntimeError("Clean up of image from previous run did not work")
         texture.image = image                       # attach new image to texture
@@ -633,8 +638,6 @@ class ImpostorMaker(bpy.types.Operator) :
         assert me, "Dump - no mesh"
         if not me.uv_layers.active :                        # if no UV layer to modify
             me.uv_texture_add()                             # add UV layer
-            ####bpy.context.scene.objects.active = target       # make target the active object, which it should be anyway
-            ####bpy.ops.mesh.uv_texture_add()                   # add UVs to active object
         for face, rect in zip(faces, rects) :               # iterate over arrays in sync
             face.setuvs(target, rect, margin, size)         # set UV values for face
             face.dump()
@@ -643,21 +646,13 @@ class ImpostorMaker(bpy.types.Operator) :
         """
         Create a lamp object and plug it into the scene
         """
-        ####scene = bpy.context.scene
         # Create new lamp datablock
         lamp_data = bpy.data.lamps.new(name=name, type=lamptype)
-
         # Create new object with our lamp datablock
         lamp = bpy.data.objects.new(name=name, object_data=lamp_data)
-
         # Link lamp object to the scene so it'll appear in this scene
         scene.objects.link(lamp)
-
-        # Place lamp to a specified location
-        ####lamp_object.location = (5.0, 5.0, 5.0)
-
         # And finally select it make active
-        ####lamp_object.select = True
         scene.objects.active = lamp
         return lamp
         
@@ -665,30 +660,33 @@ class ImpostorMaker(bpy.types.Operator) :
         """
         Composite list of faces into an image
         """
-        CAMERADIST = 5.0                                                # camera 5m back from object - somewhat arbitrary
-        (width, height) = layout.getsize()                              # final image dimensions
+        CAMERADIST = 5.0                                                    # camera 5m back from object - somewhat arbitrary
+        (width, height) = layout.getsize()                                  # final image dimensions
         rects = layout.getrects()
         composite = ImageComposite(name, width, height)
-        scene = bpy.context.scene
+        scene = bpy.context.scene                                           # active scene
+        camera = scene.camera                                               # active camera in this scene
+        if not camera :                                                     # no camera available, can't render
+            raise RuntimeError("No camera in the scene. Please add one.")                   
         with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=True) as fd :       # create temp file for render
-            lamp = self.addlamp(scene)                          # temporary lamp for rendering
-            for i in range(len(faces)) :
-                ####self.report({'INFO'},"Rendering, %d%% done." % (int((100*i)/len(faces)),))    # progress report.
-                face = faces[i]
-                rect = rects[i]
-                width = rect[2] - rect[0]
-                height = rect[3] - rect[1]
-                if DEBUGPRINT :
-                    print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
-                camera = bpy.data.objects['Camera']                         # CHECK - may not always be current camera
-                face.setupcamera(camera, CAMERADIST, 0.05)                  # point camera
-                face.setuplamp(lamp, CAMERADIST + 1.0)                      # lamp behind camera
-                print("Lamp location: %s" % (lamp.location,))               # ***TEMP***
-                img = face.rendertoimage(fd, width, height)
-                composite.paste(img, rect[0], rect[1])                      # paste into image
-                deleteimg(img)                                              # get rid of just-rendered image
-            #   Cleanup 
-            scene.objects.unlink(lamp)                                      # remove from scene
+            lamp = self.addlamp(scene)                                      # temporary lamp for rendering
+            try :
+                for i in range(len(faces)) :
+                    ####self.report({'INFO'},"Rendering, %d%% done." % (int((100*i)/len(faces)),))    # progress report.
+                    face = faces[i]
+                    rect = rects[i]
+                    width = rect[2] - rect[0]
+                    height = rect[3] - rect[1]
+                    if DEBUGPRINT :
+                        print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
+                    face.setupcamera(camera, CAMERADIST, 0.05)              # point camera
+                    face.setuplamp(lamp, CAMERADIST + 1.0)                  # lamp behind camera
+                    img = face.rendertoimage(fd, width, height)
+                    composite.paste(img, rect[0], rect[1])                  # paste into image
+                    deleteimg(img)                                          # get rid of just-rendered image
+            #   Cleanup for all faces
+            finally: 
+                scene.objects.unlink(lamp)                                  # remove from scene
             ####bpy.data.lamps.remove(lamp)                                 # remove from lamps
         image = composite.getimage()                                        # composited image
         return image                                                        # return image object
