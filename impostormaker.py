@@ -149,8 +149,6 @@ class ImageComposite :
             x < 0 or y < 0) :
             raise ValueError("Image paste of (%d,%d) at (%d,%d) into (%d,%d), won't fit." % (inw, inh, x, y, outw, outh))  
         print("Pasting (%d,%d) at (%d,%d) into (%d,%d), input length %d, output length %d." % (inw, inh, x, y, outw, outh, len(img.pixels), len(self.image.pixels)))  # ***TEMP***
-        ####for pixel in img.pixels[0:100] :
-        ####    print("Pixel: %d" % (pixel,))           # ***TEMP***
         if x == 0 and inw == outw :                 # easy case, full rows
             start = y*outw*ImageComposite.CHANNELS                 # offset into image
             end = start + inw*inh*ImageComposite.ImageComposite.CHANNELS
@@ -592,12 +590,13 @@ class ImpostorMaker(bpy.types.Operator) :
             bsdf = material.node_tree.nodes['Diffuse BSDF']
             mixer = material.node_tree.nodes.new(type='ShaderNodeMixShader')  # for applying alpha
             transpnode = material.node_tree.nodes.new(type='ShaderNodeBsdfTransparent')   # just to generate black transparent
+            transpnode.inputs[0].default_value = mathutils.Vector((0.0, 0.0, 0.0, 0.0))   # black transparent 
             material.node_tree.links.new(imgnode.outputs['Color'], bsdf.inputs['Color']) # Image color -> BSDF shader
             material.node_tree.links.new(imgnode.outputs['Alpha'], mixer.inputs['Fac']) # Image alpha channel -> Mixer control
             material.node_tree.links.new(transpnode.outputs['BSDF'], mixer.inputs[1]) # Black transparent -> Mixer input 
             material.node_tree.links.new(bsdf.outputs['BSDF'], mixer.inputs[2]) # Shader output -> Mixer input 
             material.node_tree.links.new(mixer.outputs['Shader'], materialoutput.inputs['Surface']) # 
-            #   ***NO ALPHA YET - NEED ANOTHER CONNECTION***
+            material.game_settings.alpha_blend = 'CLIP'   # Needed to get alpha control on screen
         if texture.image :                          # previous image should have been deleted above
             raise RuntimeError("Clean up of image from previous run did not work")
         texture.image = image                       # attach new image to texture
