@@ -514,7 +514,11 @@ class ImpostorMaker(bpy.types.Operator) :
             return {'CANCELLED'}
         target = context.selected_objects[0]        # target impostor (last selection is first?)
         if target.type != 'MESH' :
-            self.report({'ERROR_INVALID_INPUT'}, "Impostor \"%s\"must be a mesh." % (target.name,))
+            self.report({'ERROR_INVALID_INPUT'}, "Impostor \"%s\" must be a mesh." % (target.name,))
+            return {'CANCELLED'}
+        if target.scale[0] < 0 or target.scale[1] < 0 or target.scale[2] < 0 :
+            self.report({'ERROR_INVALID_INPUT'}, "Impostor \"%s\" has a negative scale:  (%1.2f, %1.2f, %1.2f)." % 
+                (target.name, target.scale[0], target.scale[1], target.scale[2]))
             return {'CANCELLED'}
         sources = context.selected_objects[:-1]     # source objects
         if not sources :                            # if no source objects
