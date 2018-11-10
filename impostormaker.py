@@ -587,7 +587,7 @@ class ImpostorMaker(bpy.types.Operator) :
         bsdf = material.node_tree.nodes['Diffuse BSDF']
         mixer = material.node_tree.nodes.new(type='ShaderNodeMixShader')  # for applying alpha
         transpnode = material.node_tree.nodes.new(type='ShaderNodeBsdfTransparent')   # just to generate black transparent
-        transpnode.inputs[0].default_value = mathutils.Vector((0.0, 0.0, 0.0, 0.0))   # black transparent 
+        transpnode.inputs[0].default_value = mathutils.Vector((1.0, 1.0, 1.0, 0.0))   # white transparent 
         material.node_tree.links.new(imgnode.outputs['Color'], bsdf.inputs['Color']) # Image color -> BSDF shader
         material.node_tree.links.new(imgnode.outputs['Alpha'], mixer.inputs['Fac']) # Image alpha channel -> Mixer control
         material.node_tree.links.new(transpnode.outputs['BSDF'], mixer.inputs[1]) # Black transparent -> Mixer input 
@@ -597,7 +597,8 @@ class ImpostorMaker(bpy.types.Operator) :
         if texture.image :                          # previous image should have been deleted above
             raise RuntimeError("Clean up of image from previous run did not work")
         texture.image = image                       # attach new image to texture
-        #   Connect up nodes
+        #   Save file in default folder
+        ####texture.image.save()                        # save final textured image (WHERE???)
         
             
         
@@ -662,7 +663,7 @@ class ImpostorMaker(bpy.types.Operator) :
         """
         Composite list of faces into an image
         """
-        CAMERADIST = 5.0                                                    # camera 5m back from object - somewhat arbitrary
+        CAMERADIST = 0.5                                                    # camera 5m back from object - somewhat arbitrary
         (width, height) = layout.getsize()                                  # final image dimensions
         rects = layout.getrects()
         composite = ImageComposite(name, width, height)
@@ -682,7 +683,7 @@ class ImpostorMaker(bpy.types.Operator) :
                     if DEBUGPRINT :
                         print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
                     face.setupcamera(camera, CAMERADIST, 0.05)              # point camera
-                    face.setuplamp(lamp, CAMERADIST + 1.0)                  # lamp behind camera
+                    face.setuplamp(lamp, CAMERADIST + 0.25)                 # lamp behind camera
                     img = face.rendertoimage(fd, width, height)
                     composite.paste(img, rect[0], rect[1])                  # paste into image
                     deleteimg(img)                                          # get rid of just-rendered image
