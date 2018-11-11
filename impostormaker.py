@@ -23,6 +23,7 @@ DRAWABLE = ['MESH', 'CURVE', 'SURFACE', 'META', 'FONT', 'ARMATURE', 'LATTICE']  
 
 NORMALERROR = 0.001                     # allowed difference for two normals being the same
 IMPOSTORPREFIX = "IMP-"                 # our textures and materials begin with this
+CAMERADISTFACTOR = 0.5                  # camera is half the size of the object back from it, times this
 
 #   Debug settings
 DEBUGPRINT = True                       # enable debug print
@@ -602,7 +603,7 @@ class ImpostorMaker(bpy.types.Operator) :
         
             
         
-    def buildcomposite(self, target, filename, faces, width=512, margin=9) :
+    def buildcomposite(self, target, faces, width=512, margin=9) :
         """
         Create composite image
         """
@@ -635,10 +636,11 @@ class ImpostorMaker(bpy.types.Operator) :
         assert me, "Dump - no mesh"
         if not me.uv_layers.active :                        # if no UV layer to modify
             #   Don't know how to do this at the data layer. Have to do it with an operator.
-            oldactive = bpy.context.scene.objects.active
-            bpy.context.scene.objects.active = target
-            bpy.ops.mesh.uv_texture_add()
-            bpy.context.scene.objects.active = oldactive
+            me.uv_textures.new()
+            ####oldactive = bpy.context.scene.objects.active
+            ####bpy.context.scene.objects.active = target
+            ####bpy.ops.mesh.uv_texture_add()
+            ####bpy.context.scene.objects.active = oldactive
             ####me.uv_layers.uv_texture_add()                             # add UV layer
         for face, rect in zip(faces, rects) :               # iterate over arrays in sync
             face.setuvs(target, rect, margin, size)         # set UV values for face
@@ -663,7 +665,6 @@ class ImpostorMaker(bpy.types.Operator) :
         """
         Composite list of faces into an image
         """
-        CAMERADIST = 0.5                                                    # camera 5m back from object - somewhat arbitrary
         (width, height) = layout.getsize()                                  # final image dimensions
         rects = layout.getrects()
         composite = ImageComposite(name, width, height)
@@ -675,15 +676,17 @@ class ImpostorMaker(bpy.types.Operator) :
             lamp = self.addlamp(scene)                                      # temporary lamp for rendering
             try :
                 for i in range(len(faces)) :
-                    ####self.report({'INFO'},"Rendering, %d%% done." % (int((100*i)/len(faces)),))    # progress report.
+                    ####self.report({'INFO'},"Rendering, %d%% done." % (int((100*i)/len(faces)),))    # useless, they all come out at the end
                     face = faces[i]
                     rect = rects[i]
                     width = rect[2] - rect[0]
                     height = rect[3] - rect[1]
+                    cameradist = max(face.getfacebounds()) * CAMERADISTFACTOR * 0.5 # Camera is half the size of the target face back from it.
                     if DEBUGPRINT :
+                        print("Calculated camera distance: %1.2f" % (cameradist,))  
                         print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
-                    face.setupcamera(camera, CAMERADIST, 0.05)              # point camera
-                    face.setuplamp(lamp, CAMERADIST + 0.25)                 # lamp behind camera
+                    face.setupcamera(camera, cameradist, 0.05)              # point camera
+                    face.setuplamp(lamp, cameradist)                        # lamp at camera
                     img = face.rendertoimage(fd, width, height)
                     composite.paste(img, rect[0], rect[1])                  # paste into image
                     deleteimg(img)                                          # get rid of just-rendered image
@@ -739,9 +742,9 @@ class ImpostorMaker(bpy.types.Operator) :
                 print("Faces")
                 for f in faces :
                     f.dump()
-            #   Lay out texture map
+            #   Do the real work
             texmapwidth = 256                                               # ***TEMP***
-            self.buildcomposite(target, "impostortex", faces, texmapwidth)                        # lay out, first try
+            self.buildcomposite(target, faces, texmapwidth)                 # render and composite
             if DEBUGMARKERS : 
                 self.markimpostor(faces)                                    # Turn on if transform bugs to show faces.
         except (ValueError, RuntimeError) as message :                      # if trouble

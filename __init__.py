@@ -18,7 +18,7 @@ importlib.reload(impostormaker)                                 # force a reload
 bl_info = {
     "name": "Impostor maker",
     "author": "John Nagle",
-    "version": (1, 0, 0),
+    "version": (1, 0, 1),
     "blender": (2, 78, 0),
     "location": "Object > Second Life",
     "description": "Impostor object generator for Second Life",
@@ -28,9 +28,7 @@ bl_info = {
 
 #   Connect to Blender menu system        
 def menu_func(self, context) :
-    self.layout.operator(impostormaker.ImpostorMaker.bl_idname) ###,
-        ####text=Move2Operator.__doc__,  
-        ####icon='PLUGIN')
+    self.layout.operator(impostormaker.ImpostorMaker.bl_idname) 
 
 def register() :
     bpy.utils.register_class(impostormaker.ImpostorMaker)
