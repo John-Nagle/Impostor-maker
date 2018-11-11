@@ -31,7 +31,7 @@ LLLOWLODDIST = 10                       # LL viewer goes to low LOD at this * fa
 FSLOWLODDIST = 20                       # Firestorm viewer (using this due to market share)
 SCREENSIZE = 2000                       # width of screen in pixels
 VIEWANGLE = 1.048                       # default view angle, radians
-TEXELSPERPIXEL = 0.5                    # provide this many texels per pixel
+TEXELSPERPIXEL = 1                      # provide this many texels per pixel
 
 SCREENFRACT = (2*math.atan(0.5/FSLOWLODDIST)) / VIEWANGLE # fraction of screen occupied by object at low LOD point
 PIXELSNEEDED = SCREENFRACT*TEXELSPERPIXEL*SCREENSIZE # number of pixels needed at this resolution
