@@ -702,6 +702,7 @@ class ImpostorMaker(bpy.types.Operator) :
         with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=True) as fd :       # create temp file for render
             lamp = self.addlamp(scene)                                      # temporary lamp for rendering
             try :
+                bpy.context.window.cursor_set('WAIT')                       # wait cursor
                 for i in range(len(faces)) :
                     ####self.report({'INFO'},"Rendering, %d%% done." % (int((100*i)/len(faces)),))    # useless, they all come out at the end
                     face = faces[i]
@@ -720,6 +721,7 @@ class ImpostorMaker(bpy.types.Operator) :
             #   Cleanup for all faces
             finally: 
                 scene.objects.unlink(lamp)                                  # remove from scene
+                bpy.context.window.cursor_modal_restore()                   # back to normal
             ####bpy.data.lamps.remove(lamp)                                 # remove from lamps
         image = composite.getimage()                                        # composited image
         return image                                                        # return image object
