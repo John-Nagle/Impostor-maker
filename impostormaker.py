@@ -25,6 +25,21 @@ NORMALERROR = 0.001                     # allowed difference for two normals bei
 IMPOSTORPREFIX = "IMP-"                 # our textures and materials begin with this
 CAMERADISTFACTOR = 0.5                  # camera is half the size of the object back from it, times this
 
+#   Level of detail constants for sizing textures.
+#   A 1m object in SL goes to Low level of detail in SL at 10 meters.
+LLLOWLODDIST = 10                       # LL viewer goes to low LOD at this * facesize
+FSLOWLODDIST = 20                       # Firestorm viewer (using this due to market share)
+SCREENSIZE = 2000                       # width of screen in pixels
+VIEWANGLE = 1.048                       # default view angle, radians
+TEXELSPERPIXEL = 0.5                    # provide this many texels per pixel
+
+SCREENFRACT = (2*math.atan(0.5/FSLOWLODDIST)) / VIEWANGLE # fraction of screen occupied by object at low LOD point
+PIXELSNEEDED = SCREENFRACT*TEXELSPERPIXEL*SCREENSIZE # number of pixels needed at this resolution
+
+TEXMAPWIDTH = 512                       # always this wide, height varies
+MARGIN = 3                              # space between images
+
+
 #   Debug settings
 DEBUGPRINT = True                       # enable debug print
 DEBUGMARKERS = False                    # add marking objects to scene
@@ -122,7 +137,7 @@ def counttriangles(obj) :
     Triangle count of object
     """
     return sum([len(face.vertices)-2 for face in obj.data.polygons])   # tris = verts-2
-
+    
 class ImageComposite :
     """
     Image composited from multiple images
@@ -551,22 +566,32 @@ class ImpostorMaker(bpy.types.Operator) :
         bm.clear()                                  # clean up
         bm.free()
         
-    def layoutcomposite(self, layout, faces) :
+    def layoutcomposite(self, layout, sortedfaces, scalefactor) :
         """
         Decide where to place faces in composite image
         """
         #   Widest faces first
         width = layout.getsize()[0]
-        sortedfaces = sorted(faces, key = lambda f : f.getfacebounds()[0], reverse=True)
-        widest = sortedfaces[0].getfacebounds()[0]  # width of widest face
-        scalefactor = (width - 2*layout.getmargin()) / widest     # pixels per unit
+        ####sortedfaces = sorted(faces, key = lambda f : f.getfacebounds()[0], reverse=True)
+        ####widest = sortedfaces[0].getfacebounds()[0]  # width of widest face, meters
+        ####scalefactor = (width - 2*layout.getmargin()) / widest     # pixels per unit
         for face in sortedfaces :
             width = int(math.floor(face.getfacebounds()[0] * scalefactor))   # width in pixels
             height = int(math.floor(face.getfacebounds()[1] * scalefactor))   # height in pixels
             print("Face size in pixels: (%d,%d)" % (width, height)) # ***TEMP***
             layout.getrect(width, height)           # lay out in layout object            
         layout.dump()                               # ***TEMP***
-        return sortedfaces
+        
+    def calcscalefactor(self, sortedfaces) :
+        """
+        Calculate scale factor, pixels per meter, to achieve desired texels per pixel
+        """
+        widest = sortedfaces[0].getfacebounds()[0]  # width of widest face, meters
+        if widest <= 0.0 :
+            raise ValueError("Faces have zero size.")
+        print("Scale factor: %d/%1.2f = %1.2f" % (PIXELSNEEDED, widest, PIXELSNEEDED/widest)) # ***TEMP***
+        return PIXELSNEEDED / widest
+        
         
     def outputcomposite(self, target, image) :
         """
@@ -603,18 +628,20 @@ class ImpostorMaker(bpy.types.Operator) :
         
             
         
-    def buildcomposite(self, target, faces, width=512, margin=9) :
+    def buildcomposite(self, target, faces, width, margin) :
         """
         Create composite image
         """
         #   Layout phase
         assert len(faces) > 0, "No faces for impostor target"   
-        #   Pass 1 - find out how much space we need      
+        #   Pass 1 - find out how much space we need
+        sortedfaces = sorted(faces, key = lambda f : f.getfacebounds()[0], reverse=True) # widest faces first
+        scalefactor = self.calcscalefactor(sortedfaces)
         layout = ImageLayout(margin, width, None)
-        self.layoutcomposite(layout, faces)
+        self.layoutcomposite(layout, sortedfaces, scalefactor)
         #   Pass 2 - layout in actual size image
         layout = ImageLayout(margin, width, nextpowerof2(layout.getsize()[1], self.MAXIMAGEDIM))  # round up to next power of 2
-        sortedfaces = self.layoutcomposite(layout, faces)
+        self.layoutcomposite(layout, sortedfaces, scalefactor)
         #   Rendering phase
         setnorender(target, True)                                           # hide target impostor object during render
         imgname = IMPOSTORPREFIX + target.name
@@ -635,8 +662,8 @@ class ImpostorMaker(bpy.types.Operator) :
         me = target.data                                    # mesh info
         assert me, "Dump - no mesh"
         if not me.uv_layers.active :                        # if no UV layer to modify
-            #   Don't know how to do this at the data layer. Have to do it with an operator.
-            me.uv_textures.new()
+            me.uv_textures.new()                            # create UV layer
+            ####   Don't know how to do this at the data layer. Have to do it with an operator.
             ####oldactive = bpy.context.scene.objects.active
             ####bpy.context.scene.objects.active = target
             ####bpy.ops.mesh.uv_texture_add()
@@ -743,8 +770,7 @@ class ImpostorMaker(bpy.types.Operator) :
                 for f in faces :
                     f.dump()
             #   Do the real work
-            texmapwidth = 256                                               # ***TEMP***
-            self.buildcomposite(target, faces, texmapwidth)                 # render and composite
+            self.buildcomposite(target, faces, TEXMAPWIDTH, MARGIN)         # render and composite
             if DEBUGMARKERS : 
                 self.markimpostor(faces)                                    # Turn on if transform bugs to show faces.
         except (ValueError, RuntimeError) as message :                      # if trouble
