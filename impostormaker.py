@@ -597,7 +597,8 @@ class ImpostorMaker(bpy.types.Operator) :
         """
         Output composite image to Blender material
         """
-        material = None                             # no material yet.
+        image.pack(as_png=True)                                         # save in .blend file when saved
+        material = None                                                 # no material yet.
         assert not (target.data.materials is None), "Target has no materials list"
         target.data.materials.clear()               # clear out any old materials
         material = bpy.data.materials.new(name=IMPOSTORPREFIX + target.name)  # create fresh material
@@ -606,27 +607,34 @@ class ImpostorMaker(bpy.types.Operator) :
         if DEBUGPRINT :
             print("Outputting to material \"%s\"." % (material.name,))
         #   We have a material. Now we have to hook the image to it.
+        #   This has no effect on the output file, just the display.
+        #   ***NEED TO EITHER SAVE IMAGES OR PACK THEM WITH .blend FILE***
+        renderer = bpy.context.scene.render.engine                      # name of renderer in use
+        if renderer == 'BLENDER_RENDER' :                               # set up for blender renderer
+            #   ***NOT WORKING***
+            texture = bpy.data.textures.new(material.name, 'IMAGE')     # new Blender render type texture
+            slot = material.texture_slots.add()
+            slot.texture = texture
+            texture.image = image
+            material.use_nodes = False                                  # so it will show in material mode
+        elif renderer == 'CYCLES' :                                     # set up for cycles renderer
         #   Set up nodes to allow viewing the result. This has no effect on the output file.
-        texture = material.node_tree.nodes.new(type='ShaderNodeTexImage')    # BSDF shader with a texture image option
-        imgnode = material.node_tree.nodes['Image Texture'] # just created by above
-        materialoutput = material.node_tree.nodes['Material Output'] # just created by above
-        bsdf = material.node_tree.nodes['Diffuse BSDF']
-        mixer = material.node_tree.nodes.new(type='ShaderNodeMixShader')  # for applying alpha
-        transpnode = material.node_tree.nodes.new(type='ShaderNodeBsdfTransparent')   # just to generate black transparent
-        transpnode.inputs[0].default_value = mathutils.Vector((1.0, 1.0, 1.0, 0.0))   # white transparent 
-        material.node_tree.links.new(imgnode.outputs['Color'], bsdf.inputs['Color']) # Image color -> BSDF shader
-        material.node_tree.links.new(imgnode.outputs['Alpha'], mixer.inputs['Fac']) # Image alpha channel -> Mixer control
-        material.node_tree.links.new(transpnode.outputs['BSDF'], mixer.inputs[1]) # Black transparent -> Mixer input 
-        material.node_tree.links.new(bsdf.outputs['BSDF'], mixer.inputs[2]) # Shader output -> Mixer input 
-        material.node_tree.links.new(mixer.outputs['Shader'], materialoutput.inputs['Surface']) # 
-        material.game_settings.alpha_blend = 'CLIP'   # Needed to get alpha control on screen
-        if texture.image :                          # previous image should have been deleted above
-            raise RuntimeError("Clean up of image from previous run did not work")
-        texture.image = image                       # attach new image to texture
-        #   Save file in default folder
-        ####texture.image.save()                        # save final textured image (WHERE???)
-        
-            
+            texture = material.node_tree.nodes.new(type='ShaderNodeTexImage')    # BSDF shader with a texture image option
+            imgnode = material.node_tree.nodes['Image Texture'] # just created by above
+            materialoutput = material.node_tree.nodes['Material Output'] # just created by above
+            bsdf = material.node_tree.nodes['Diffuse BSDF']
+            mixer = material.node_tree.nodes.new(type='ShaderNodeMixShader')  # for applying alpha
+            transpnode = material.node_tree.nodes.new(type='ShaderNodeBsdfTransparent')   # just to generate black transparent
+            transpnode.inputs[0].default_value = mathutils.Vector((1.0, 1.0, 1.0, 0.0))   # white transparent 
+            material.node_tree.links.new(imgnode.outputs['Color'], bsdf.inputs['Color']) # Image color -> BSDF shader
+            material.node_tree.links.new(imgnode.outputs['Alpha'], mixer.inputs['Fac']) # Image alpha channel -> Mixer control
+            material.node_tree.links.new(transpnode.outputs['BSDF'], mixer.inputs[1]) # Black transparent -> Mixer input 
+            material.node_tree.links.new(bsdf.outputs['BSDF'], mixer.inputs[2]) # Shader output -> Mixer input 
+            material.node_tree.links.new(mixer.outputs['Shader'], materialoutput.inputs['Surface']) # 
+            material.game_settings.alpha_blend = 'CLIP'                 # Needed to get alpha control on screen
+            texture.image = image                                       # attach new image to texture
+        else :
+            raise ValueError("Unknown renderer '%s' in use. Use Blender Renderer or Cycles Renderer." % (renderer,))                    
         
     def buildcomposite(self, target, faces, width, margin) :
         """
