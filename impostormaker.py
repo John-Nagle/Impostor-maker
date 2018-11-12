@@ -414,9 +414,12 @@ class ImpostorFace :
         camera.matrix_world = self.getcameratransform(dist)
         camera.data.type = 'ORTHO'
         
-    def setuplamp(self, lamp, dist) :
+    def setuplamp(self, lamp, dist, sizes) :
         #   Lamp, for diffuse lighting, points in same direction as camera.
         lamp.matrix_world = self.getcameratransform(dist)
+        #   Area lamp is set bigger than the target area. "Dist" is added to give a 45 degree lit area 
+        lamp.data.size = sizes[0] + dist                                                # set area lamp dimensions
+        lamp.data.size_y = sizes[1] + dist
         
     def rendertofile(self, filename, width, height) :
         """
@@ -426,7 +429,7 @@ class ImpostorFace :
         ***NEED TO SAVE CAMERA PARAMS AND RETURN TO NORMAL OR USE A NEW CAMERA***
         ***NEED TO WORK OUT FILENAME/OBJECT NAME UNIQUENESS ISSUES***
         """
-        heightalt = int(math.floor((self.facebounds[1] / self.facebounds[0]) * width))     # user sets width, height is just enough for info
+        heightalt = int(math.floor((self.facebounds[1] / self.facebounds[0]) * width))  # user sets width, height is just enough for info
         assert abs(height-heightalt) < 2, "Height estimate is wrong"                    # ***TEMP*** not sure about this
         scene = bpy.context.scene
         scene.render.filepath = filename
@@ -572,9 +575,6 @@ class ImpostorMaker(bpy.types.Operator) :
         """
         #   Widest faces first
         width = layout.getsize()[0]
-        ####sortedfaces = sorted(faces, key = lambda f : f.getfacebounds()[0], reverse=True)
-        ####widest = sortedfaces[0].getfacebounds()[0]  # width of widest face, meters
-        ####scalefactor = (width - 2*layout.getmargin()) / widest     # pixels per unit
         for face in sortedfaces :
             width = int(math.floor(face.getfacebounds()[0] * scalefactor))   # width in pixels
             height = int(math.floor(face.getfacebounds()[1] * scalefactor))   # height in pixels
@@ -608,10 +608,8 @@ class ImpostorMaker(bpy.types.Operator) :
             print("Outputting to material \"%s\"." % (material.name,))
         #   We have a material. Now we have to hook the image to it.
         #   This has no effect on the output file, just the display.
-        #   ***NEED TO EITHER SAVE IMAGES OR PACK THEM WITH .blend FILE***
         renderer = bpy.context.scene.render.engine                      # name of renderer in use
         if renderer == 'BLENDER_RENDER' :                               # set up for blender renderer
-            #   ***NOT WORKING***
             texture = bpy.data.textures.new(material.name, 'IMAGE')     # new Blender render type texture
             slot = material.texture_slots.add()
             slot.texture = texture
@@ -671,29 +669,25 @@ class ImpostorMaker(bpy.types.Operator) :
         assert me, "Dump - no mesh"
         if not me.uv_layers.active :                        # if no UV layer to modify
             me.uv_textures.new()                            # create UV layer
-            ####   Don't know how to do this at the data layer. Have to do it with an operator.
-            ####oldactive = bpy.context.scene.objects.active
-            ####bpy.context.scene.objects.active = target
-            ####bpy.ops.mesh.uv_texture_add()
-            ####bpy.context.scene.objects.active = oldactive
-            ####me.uv_layers.uv_texture_add()                             # add UV layer
         for face, rect in zip(faces, rects) :               # iterate over arrays in sync
             face.setuvs(target, rect, margin, size)         # set UV values for face
             if DEBUGPRINT :
                 face.dump()
             
-    def addlamp(self, scene, name="Rendering lamp", lamptype='SUN') :
+    def addlamp(self, scene, name="Rendering lamp") :
         """
         Create a lamp object and plug it into the scene
         """
+        lamptype = 'AREA'
         # Create new lamp datablock
         lamp_data = bpy.data.lamps.new(name=name, type=lamptype)
+        lamp_data.shape = 'RECTANGLE'                           # separate X and Y sizes
         # Create new object with our lamp datablock
         lamp = bpy.data.objects.new(name=name, object_data=lamp_data)
         # Link lamp object to the scene so it'll appear in this scene
         scene.objects.link(lamp)
         # And finally select it make active
-        scene.objects.active = lamp
+        scene.objects.active = lamp                             # ***WRONG?***
         return lamp
         
     def compositefaces(self, name, faces, layout) :
@@ -722,7 +716,7 @@ class ImpostorMaker(bpy.types.Operator) :
                         print("Calculated camera distance: %1.2f" % (cameradist,))  
                         print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
                     face.setupcamera(camera, cameradist, 0.05)              # point camera
-                    face.setuplamp(lamp, cameradist)                        # lamp at camera
+                    face.setuplamp(lamp, cameradist, face.getfacebounds())  # lamp at camera
                     img = face.rendertoimage(fd, width, height)
                     composite.paste(img, rect[0], rect[1])                  # paste into image
                     deleteimg(img)                                          # get rid of just-rendered image
