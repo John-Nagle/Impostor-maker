@@ -621,6 +621,7 @@ class ImpostorMaker(bpy.types.Operator) :
             material.use_nodes = False                                  # so it will show in material mode
         elif renderer == 'CYCLES' :                                     # set up for cycles renderer
         #   Set up nodes to allow viewing the result. This has no effect on the output file.
+            material.use_nodes = True                                   # before we start creating nodes
             texture = material.node_tree.nodes.new(type='ShaderNodeTexImage')    # BSDF shader with a texture image option
             imgnode = material.node_tree.nodes['Image Texture'] # just created by above
             materialoutput = material.node_tree.nodes['Material Output'] # just created by above
@@ -690,8 +691,15 @@ class ImpostorMaker(bpy.types.Operator) :
         lamp = bpy.data.objects.new(name=name, object_data=lamp_data)
         # Link lamp object to the scene so it'll appear in this scene
         scene.objects.link(lamp)
-        # And finally select it make active
-        ####scene.objects.active = lamp                         # ***WRONG?***
+        renderer = bpy.context.scene.render.engine          # name of renderer in use        
+        if renderer == 'BLENDER_RENDER' :                   # set up for blender renderer
+            pass                                            # ***UNIMPLEMENTED***
+        elif renderer == 'CYCLES' :                         # set up for cycles renderer
+            #   All this is to get flat ambient lighting.
+            lamp_data.use_nodes = True
+            emissionnode = lamp_data.node_tree.nodes['Emission'] # just created by above
+            lightfalloff = lamp_data.node_tree.nodes.new(type='ShaderNodeLightFalloff')  # we want no falloff with distance
+            lamp_data.node_tree.links.new(lightfalloff.outputs['Constant'], emissionnode.inputs['Strength']) # Constant falloff -> Strength
         return lamp
         
     def compositefaces(self, name, faces, layout) :
@@ -730,7 +738,7 @@ class ImpostorMaker(bpy.types.Operator) :
                     deleteimg(img)                                          # get rid of just-rendered image
             #   Cleanup for all faces
             finally: 
-                scene.objects.unlink(lamp)                                  # remove from scene
+                ####scene.objects.unlink(lamp)                                  # remove from scene
                 #   ***NEED TO DELETE LAMP?***
                 for (lmp, oldenergy) in oldlamps :                          # for all lamps, turn back on
                     lmp.energy = oldenergy                                  # restore to old energy
