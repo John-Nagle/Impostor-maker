@@ -41,7 +41,7 @@ MARGIN = 3                              # space between images
 
 #   Brightness, to match input. Rather ad-hoc.
 EXPOSUREBLENDER = 1.0                   # ***TEMP***
-EXPOSURECYCLES = 0.33
+EXPOSURECYCLES = 0.3
 
 
 #   Debug settings
@@ -738,7 +738,7 @@ class ImpostorMaker(bpy.types.Operator) :
                     deleteimg(img)                                          # get rid of just-rendered image
             #   Cleanup for all faces
             finally: 
-                ####scene.objects.unlink(lamp)                                  # remove from scene
+                scene.objects.unlink(lamp)                                  # remove from scene
                 #   ***NEED TO DELETE LAMP?***
                 for (lmp, oldenergy) in oldlamps :                          # for all lamps, turn back on
                     lmp.energy = oldenergy                                  # restore to old energy
