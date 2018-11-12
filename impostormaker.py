@@ -39,6 +39,10 @@ PIXELSNEEDED = SCREENFRACT*TEXELSPERPIXEL*SCREENSIZE # number of pixels needed a
 TEXMAPWIDTH = 512                       # always this wide, height varies
 MARGIN = 3                              # space between images
 
+#   Brightness, to match input. Rather ad-hoc.
+EXPOSUREBLENDER = 1.0                   # ***TEMP***
+EXPOSURECYCLES = 0.33
+
 
 #   Debug settings
 DEBUGPRINT = True                       # enable debug print
@@ -146,8 +150,6 @@ class ImageComposite :
     
     def __init__(self, name, width, height) :
         #   RGBA image initialized to black transparent
-        ####bpy.ops.image.new(name=name, width=width, height=height, color=(0.0, 0.0, 0.0, 0.0), alpha=True)  
-        ####self.image = bpy.data.images[name]          # must get by name
         self.image = bpy.data.images.new(name=name, width=width, height=height, alpha=True) 
         #   Fill with transparent black
         self.image.pixels[:] = [0.0 for n in range(height*width*self.CHANNELS)] # slow. Is there a better way?
@@ -441,6 +443,7 @@ class ImpostorFace :
         scene.render.image_settings.color_mode = 'RGBA'                                 # ask for alpha channel
         scene.render.alpha_mode = 'TRANSPARENT'                                         # transparent background, Blender renderer
         scene.cycles.film_transparent = True                                            # transparent background, Cycles renderer
+        scene.cycles.film_exposure = EXPOSURECYCLES                                     # set exposure, Cycles renderer
         ####renderout = scene.render.render(write_still=True)   # ***TEMP TEST***
         bpy.ops.render.render(write_still=True) 
         
@@ -578,9 +581,10 @@ class ImpostorMaker(bpy.types.Operator) :
         for face in sortedfaces :
             width = int(math.floor(face.getfacebounds()[0] * scalefactor))   # width in pixels
             height = int(math.floor(face.getfacebounds()[1] * scalefactor))   # height in pixels
-            print("Face size in pixels: (%d,%d)" % (width, height)) # ***TEMP***
-            layout.getrect(width, height)           # lay out in layout object            
-        layout.dump()                               # ***TEMP***
+            ####print("Face size in pixels: (%d,%d)" % (width, height)) # ***TEMP***
+            layout.getrect(width, height)           # lay out in layout object  
+        if DEBUGPRINT :         
+            layout.dump()
         
     def calcscalefactor(self, sortedfaces) :
         """
@@ -678,16 +682,16 @@ class ImpostorMaker(bpy.types.Operator) :
         """
         Create a lamp object and plug it into the scene
         """
-        lamptype = 'AREA'
+        lamptype = 'AREA'                                   # big diffuse area lamp
         # Create new lamp datablock
         lamp_data = bpy.data.lamps.new(name=name, type=lamptype)
-        lamp_data.shape = 'RECTANGLE'                           # separate X and Y sizes
+        lamp_data.shape = 'RECTANGLE'                       # separate X and Y sizes
         # Create new object with our lamp datablock
         lamp = bpy.data.objects.new(name=name, object_data=lamp_data)
         # Link lamp object to the scene so it'll appear in this scene
         scene.objects.link(lamp)
         # And finally select it make active
-        scene.objects.active = lamp                             # ***WRONG?***
+        ####scene.objects.active = lamp                         # ***WRONG?***
         return lamp
         
     def compositefaces(self, name, faces, layout) :
@@ -702,8 +706,12 @@ class ImpostorMaker(bpy.types.Operator) :
         if not camera :                                                     # no camera available, can't render
             raise RuntimeError("No camera in the scene. Please add one.")                   
         with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=True) as fd :       # create temp file for render
-            lamp = self.addlamp(scene)                                      # temporary lamp for rendering
             try :
+                #    Illuminate only with our lamp, for soft consistent lighting
+                oldlamps = [(lmp, lmp.energy) for lmp in bpy.data.lamps]    # all lamps and their power
+                for (lmp, oldenergy) in oldlamps :                          # for all lamps, turn off
+                    lmp.energy = 0.0                                        # lamp off
+                lamp = self.addlamp(scene)                                  # temporary lamp for rendering
                 bpy.context.window.cursor_set('WAIT')                       # wait cursor
                 for i in range(len(faces)) :
                     ####self.report({'INFO'},"Rendering, %d%% done." % (int((100*i)/len(faces)),))    # useless, they all come out at the end
@@ -723,6 +731,9 @@ class ImpostorMaker(bpy.types.Operator) :
             #   Cleanup for all faces
             finally: 
                 scene.objects.unlink(lamp)                                  # remove from scene
+                #   ***NEED TO DELETE LAMP?***
+                for (lmp, oldenergy) in oldlamps :                          # for all lamps, turn back on
+                    lmp.energy = oldenergy                                  # restore to old energy
                 bpy.context.window.cursor_modal_restore()                   # back to normal
             ####bpy.data.lamps.remove(lamp)                                 # remove from lamps
         image = composite.getimage()                                        # composited image
