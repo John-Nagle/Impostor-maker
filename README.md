@@ -29,8 +29,9 @@ Unlike Blender baking, you do not have to adjust object scales or centers. That'
 
 # Limitations
 
-Currently, the output image is always 256 wide, and as high as it has to be to fit all the faces.
+Currently, the output image is always 512 wide, and as high as it has to be to fit all the faces.
 The image can be saved and rescaled in another program if desired. 
 
-Lighting is not diffused; specular surfaces will have too much glare. 
+Lighting needs work. Large objects tend to be too dim.
 
+Lighting for Blender rendering is far too bright.
