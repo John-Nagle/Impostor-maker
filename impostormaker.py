@@ -19,7 +19,7 @@ import os
 #
 #   Constants
 #
-DRAWABLE = ['MESH', 'CURVE', 'SURFACE', 'META', 'FONT', 'ARMATURE', 'LATTICE']      # drawable types
+DRAWABLE = set(['MESH', 'CURVE', 'SURFACE', 'META', 'FONT', 'ARMATURE', 'LATTICE'])      # drawable types
 
 NORMALERROR = 0.001                     # allowed difference for two normals being the same
 IMPOSTORPREFIX = "IMP-"                 # our textures and materials begin with this
@@ -41,7 +41,7 @@ MARGIN = 3                              # space between images
 
 #   Brightness, to match input. Rather ad-hoc.
 EXPOSUREBLENDER = 1.0                   # ***TEMP***
-EXPOSURECYCLES = 0.3
+EXPOSURECYCLES = 0.4
 
 
 #   Debug settings
@@ -534,7 +534,7 @@ class ImpostorMaker(bpy.types.Operator) :
         if not context.selected_objects :
             self.report({'ERROR_INVALID_INPUT'}, "Nothing selected.")
             return {'CANCELLED'}
-        target = context.selected_objects[0]        # target impostor (last selection is first?)
+        target = context.selected_objects[-1]       # target impostor (last selection)
         if target.type != 'MESH' :
             self.report({'ERROR_INVALID_INPUT'}, "Impostor \"%s\" must be a mesh." % (target.name,))
             return {'CANCELLED'}
@@ -639,7 +639,7 @@ class ImpostorMaker(bpy.types.Operator) :
         else :
             raise ValueError("Unknown renderer '%s' in use. Use Blender Renderer or Cycles Renderer." % (renderer,))                    
         
-    def buildcomposite(self, target, faces, width, margin) :
+    def buildcomposite(self, target, sources, faces, width, margin) :
         """
         Create composite image
         """
@@ -656,7 +656,7 @@ class ImpostorMaker(bpy.types.Operator) :
         #   Rendering phase
         setnorender(target, True)                                           # hide target impostor object during render
         imgname = IMPOSTORPREFIX + target.name
-        outimg = self.compositefaces(imgname, sortedfaces, layout)          # do the real work
+        outimg = self.compositefaces(imgname, sources, sortedfaces, layout) # do the real work
         setnorender(target, False)                                          # hide target impostor object during render
         #   UV setup phase
         self.adduvlayer(target, sortedfaces, layout, margin)
@@ -702,7 +702,7 @@ class ImpostorMaker(bpy.types.Operator) :
             lamp_data.node_tree.links.new(lightfalloff.outputs['Constant'], emissionnode.inputs['Strength']) # Constant falloff -> Strength
         return lamp
         
-    def compositefaces(self, name, faces, layout) :
+    def compositefaces(self, name, sources, faces, layout) :
         """
         Composite list of faces into an image
         """
@@ -715,10 +715,15 @@ class ImpostorMaker(bpy.types.Operator) :
             raise RuntimeError("No camera in the scene. Please add one.")                   
         with tempfile.NamedTemporaryFile(mode='w+b', suffix='.png', prefix='TMP-', delete=True) as fd :       # create temp file for render
             try :
-                #    Illuminate only with our lamp, for soft consistent lighting
-                oldlamps = [(lmp, lmp.energy) for lmp in bpy.data.lamps]    # all lamps and their power
-                for (lmp, oldenergy) in oldlamps :                          # for all lamps, turn off
-                    lmp.energy = 0.0                                        # lamp off
+                #   Illuminate only with our lamp, for soft consistent lighting.
+                #   Render only the objects in the sources list
+                allobjs = bpy.context.scene.objects
+                sourcesset = set(sources)                                   # avoid O(N^2)
+                hideobjs = [lmp for lmp in allobjs if lmp.type == 'LAMP' and not lmp.hide_render]    # hide all lamps other than ours.
+                hideobjs += [obj for obj in allobjs if obj.type in DRAWABLE and not (obj in sourcesset) and not obj.hide_render] # hide all not in selection set
+                for obj in hideobjs :                                       # hide everything on the hide list
+                    assert not obj.hide_render, "Object being hidden from render is already hidden" # Don't hide twice, so unhide will work
+                    obj.hide_render = True                                  # hide this
                 lamp = self.addlamp(scene)                                  # temporary lamp for rendering
                 bpy.context.window.cursor_set('WAIT')                       # wait cursor
                 for i in range(len(faces)) :
@@ -738,10 +743,10 @@ class ImpostorMaker(bpy.types.Operator) :
                     deleteimg(img)                                          # get rid of just-rendered image
             #   Cleanup for all faces
             finally: 
-                ####scene.objects.unlink(lamp)                                  # remove from scene
+                scene.objects.unlink(lamp)                                  # remove from scene
                 #   ***NEED TO DELETE LAMP?***
-                for (lmp, oldenergy) in oldlamps :                          # for all lamps, turn back on
-                    lmp.energy = oldenergy                                  # restore to old energy
+                for ojb in hideobjs :                                       # for all objects hidden from render
+                    obj.hide_render = False                                 # restore old state
                 bpy.context.window.cursor_modal_restore()                   # back to normal
             ####bpy.data.lamps.remove(lamp)                                 # remove from lamps
         image = composite.getimage()                                        # composited image
@@ -783,7 +788,6 @@ class ImpostorMaker(bpy.types.Operator) :
             if DEBUGPRINT :
                 print("Target: %s (%d triangles)" % (target.name, counttriangles(target))) 
                 print("Sources: %s (%d triangles) " % (",".join([obj.name for obj in sources]), sum(counttriangles(obj) for obj in sources)))  
-            #   ***NEED TO TURN OFF RENDERING FOR ANY RENDERABLE OBJECTS NOT ON THE LIST***
             #   Do a limited dissolve on the target object to combine coplanar triangles into big faces. 
             self.limiteddissolve(context, target)     
             #   Make our object for each face
@@ -793,7 +797,7 @@ class ImpostorMaker(bpy.types.Operator) :
                 for f in faces :
                     f.dump()
             #   Do the real work
-            self.buildcomposite(target, faces, TEXMAPWIDTH, MARGIN)         # render and composite
+            self.buildcomposite(target, sources, faces, TEXMAPWIDTH, MARGIN)         # render and composite
             if DEBUGMARKERS : 
                 self.markimpostor(faces)                                    # Turn on if transform bugs to show faces.
         except (ValueError, RuntimeError) as message :                      # if trouble
