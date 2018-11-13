@@ -628,7 +628,7 @@ class ImpostorMaker(bpy.types.Operator) :
             bsdf = material.node_tree.nodes['Diffuse BSDF']
             mixer = material.node_tree.nodes.new(type='ShaderNodeMixShader')  # for applying alpha
             transpnode = material.node_tree.nodes.new(type='ShaderNodeBsdfTransparent')   # just to generate black transparent
-            transpnode.inputs[0].default_value = mathutils.Vector((1.0, 1.0, 1.0, 0.0))   # white transparent 
+            transpnode.inputs[0].default_value = mathutils.Vector((0.0, 0.0, 0.0, 0.0))   # black transparent 
             material.node_tree.links.new(imgnode.outputs['Color'], bsdf.inputs['Color']) # Image color -> BSDF shader
             material.node_tree.links.new(imgnode.outputs['Alpha'], mixer.inputs['Fac']) # Image alpha channel -> Mixer control
             material.node_tree.links.new(transpnode.outputs['BSDF'], mixer.inputs[1]) # Black transparent -> Mixer input 
@@ -738,7 +738,7 @@ class ImpostorMaker(bpy.types.Operator) :
                     deleteimg(img)                                          # get rid of just-rendered image
             #   Cleanup for all faces
             finally: 
-                scene.objects.unlink(lamp)                                  # remove from scene
+                ####scene.objects.unlink(lamp)                                  # remove from scene
                 #   ***NEED TO DELETE LAMP?***
                 for (lmp, oldenergy) in oldlamps :                          # for all lamps, turn back on
                     lmp.energy = oldenergy                                  # restore to old energy
