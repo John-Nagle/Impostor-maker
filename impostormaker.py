@@ -22,7 +22,7 @@ import os
 DRAWABLE = set(['MESH', 'CURVE', 'SURFACE', 'META', 'FONT', 'ARMATURE', 'LATTICE'])      # drawable types
 
 NORMALERROR = 0.001                     # allowed difference for two normals being the same
-IMPOSTORPREFIX = "IMP-"                 # our textures and materials begin with this
+IMPOSTORPREFIX = "IM"                   # our textures and materials begin with this
 CAMERADISTFACTOR = 0.5                  # camera is half the size of the object back from it, times this
 
 #   Level of detail constants for sizing textures.
@@ -604,7 +604,7 @@ class ImpostorMaker(bpy.types.Operator) :
         material = None                                                 # no material yet.
         assert not (target.data.materials is None), "Target has no materials list"
         target.data.materials.clear()               # clear out any old materials
-        material = bpy.data.materials.new(name=IMPOSTORPREFIX + target.name)  # create fresh material
+        material = bpy.data.materials.new(name=IMPOSTORPREFIX + "M-" + target.name)  # create fresh material
         material.use_nodes = True
         target.data.materials.append(material)
         if DEBUGPRINT :
@@ -654,7 +654,7 @@ class ImpostorMaker(bpy.types.Operator) :
         self.layoutcomposite(layout, sortedfaces, scalefactor)
         #   Rendering phase
         setnorender(target, True)                                           # hide target impostor object during render
-        imgname = IMPOSTORPREFIX + target.name
+        imgname = IMPOSTORPREFIX + "I-" + target.name                       # Image is "IMI-name"
         outimg = self.compositefaces(imgname, sources, sortedfaces, layout) # do the real work
         setnorender(target, False)                                          # hide target impostor object during render
         #   UV setup phase
@@ -678,7 +678,7 @@ class ImpostorMaker(bpy.types.Operator) :
             if DEBUGPRINT :
                 face.dump()
             
-    def addlamp(self, scene, name="Rendering lamp") :
+    def addlamp(self, scene, name="Impostoring lamp") :
         """
         Create a lamp object and plug it into the scene
         """
@@ -744,9 +744,9 @@ class ImpostorMaker(bpy.types.Operator) :
                     deleteimg(img)                                          # get rid of just-rendered image
             #   Cleanup for all faces
             finally: 
-                ####    scene.objects.unlink(lamp)                                  # remove from scene
+                ####scene.objects.unlink(lamp)                                  # remove from scene
                 #   ***NEED TO DELETE LAMP?***
-                for ojb in hideobjs :                                       # for all objects hidden from render
+                for obj in hideobjs :                                       # for all objects hidden from render
                     obj.hide_render = False                                 # restore old state
                 bpy.context.window.cursor_modal_restore()                   # back to normal
             ####bpy.data.lamps.remove(lamp)                                 # remove from lamps
