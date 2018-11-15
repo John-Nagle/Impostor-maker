@@ -40,9 +40,8 @@ TEXMAPWIDTH = 512                       # always this wide, height varies
 MARGIN = 3                              # space between images
 
 #   Brightness, to match input. Rather ad-hoc.
-EXPOSUREBLENDER = 1.0                   # ***TEMP***
-EXPOSURECYCLES = 0.4
-
+EXPOSUREBLENDER = 1.0                   # seems to work
+ENERGYBLENDERLAMP = 0.015               # very small
 
 #   Debug settings
 DEBUGPRINT = True                       # enable debug print
@@ -693,7 +692,9 @@ class ImpostorMaker(bpy.types.Operator) :
         scene.objects.link(lamp)
         renderer = bpy.context.scene.render.engine          # name of renderer in use        
         if renderer == 'BLENDER_RENDER' :                   # set up for blender renderer
-            pass                                            # ***UNIMPLEMENTED***
+            lamp_data.use_nodes = False
+            lamp_data.energy = ENERGYBLENDERLAMP            # quite dim
+            lamp_data.use_specular = False                  # diffuse only
         elif renderer == 'CYCLES' :                         # set up for cycles renderer
             #   All this is to get flat ambient lighting.
             lamp_data.use_nodes = True
@@ -743,7 +744,7 @@ class ImpostorMaker(bpy.types.Operator) :
                     deleteimg(img)                                          # get rid of just-rendered image
             #   Cleanup for all faces
             finally: 
-                scene.objects.unlink(lamp)                                  # remove from scene
+                ####    scene.objects.unlink(lamp)                                  # remove from scene
                 #   ***NEED TO DELETE LAMP?***
                 for ojb in hideobjs :                                       # for all objects hidden from render
                     obj.hide_render = False                                 # restore old state
