@@ -40,7 +40,7 @@ TEXMAPWIDTH = 512                       # always this wide, height varies
 MARGIN = 3                              # space between images
 
 #   Brightness, to match input. Rather ad-hoc.
-EXPOSUREBLENDER = 1.0                   # seems to work
+EXPOSURECYCLES = 0.33                   # sems to work
 ENERGYBLENDERLAMP = 0.015               # very small
 
 #   Debug settings
@@ -744,7 +744,7 @@ class ImpostorMaker(bpy.types.Operator) :
                     deleteimg(img)                                          # get rid of just-rendered image
             #   Cleanup for all faces
             finally: 
-                ####scene.objects.unlink(lamp)                                  # remove from scene
+                scene.objects.unlink(lamp)                                  # remove from scene
                 #   ***NEED TO DELETE LAMP?***
                 for obj in hideobjs :                                       # for all objects hidden from render
                     obj.hide_render = False                                 # restore old state
