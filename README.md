@@ -27,11 +27,12 @@ and UV setup is automatic. The material and image will be named "IMP-<name of ob
 
 Unlike Blender baking, you do not have to adjust object scales or centers. That's all automatic. 
 
-# Limitations
+# Limitations and bugs
 
 Currently, the output image is always 512 wide, and as high as it has to be to fit all the faces.
-The image can be saved and rescaled in another program if desired. 
+Packing of all the faces into the image is inefficient.
 
-Lighting needs work. Large objects tend to be too dim.
+Display of the impostor in "Rendered" setting does not have proper alpha transparency. "Textured" 
+is OK.  This does not affect the generated impostor; it's just a Blender problem.
 
-Lighting for Blender rendering is far too bright.
+
