@@ -211,31 +211,6 @@ class ImageLayout :
         self.skyline = [0]*width                    # max height at this X position
         self.rects = []                             # allocated rectangles
         
-    def getrectold(self, width, height) :
-        """
-        Ask for a rectangle, get back starting corner
-        
-        OBSOLETE
-        """
-        if (width > self.width - 2*self.margin) :
-            raise ValueError("Image too large to composite into target image")
-        #   Try to fit in current row
-        if self.xpos + width + 2*self.margin < self.width : # if can fit in this row
-            corner = (self.xpos + self.margin, self.ypos + self.margin)
-            self.xpos = self.xpos + width + self.margin  # use up space
-            self.ymax = max(self.ymax, self.ypos + height + self.margin)
-        else :
-            #   Must start a new row
-            self.ypos = self.ymax
-            self.xpos = 0
-            corner = (self.xpos + self.margin, self.ypos + self.margin)
-            self.xpos = self.xpos + width + self.margin  # use up space
-            self.ymax = max(self.ymax, self.ypos + height + self.margin)
-        rect = (corner[0], corner[1], corner[0] + width, corner[1] + height)
-        self.rects.append(rect)                     # allocated rectangle
-        if self.height and self.ypos > self.height :    # if specified size and won't fit
-            raise ValueError("Image (%d,%d) will not fit into desired target image size of (%d,%d)" % (width, height, self.width, self.height))
-        return rect
         
     def _testrect(self, xmin, ymin, width, height) :
         """
@@ -253,7 +228,7 @@ class ImageLayout :
         print("Testrect: success")                          # ***TEMP***
         return True                                         # can fit
         
-    def getrect(self, width, height, ystart = 0) :
+    def getrectold2(self, width, height, ystart = 0) :
         """
         Ask for a rectangle, get back starting corner. Returns None if no space
         """
@@ -276,6 +251,35 @@ class ImageLayout :
         if ystart == 0 :                                    # if failed looking in X
             return self.getrect(width, height, self.skyline[0] + 1)  # try to start a new row
         return None                                         # didn't fit
+                   
+    def getrect(self, width, height) :
+        """
+        Ask for a rectangle, get back starting corner. Returns None if no space
+        """
+        if (width > self.width - self.margin) :
+            raise ValueError("Image too large to composite into target image")
+        BIGINT = 999999999                                  # huge integer; Python 3 has no "maxint"
+        yprev = BIGINT                                      # minimum Y at which to test
+        bestx = None                                        # best fit location, X
+        besty = BIGINT                                      # best fit location, Y 
+        #   Scan in X for minimum Y at which object will fit              
+        for xmin in range(0, len(self.skyline) - width) :   # for possible locations 
+            ymin = self.skyline[xmin]                       # Y at this point in skyline                           
+            if ymin < yprev and ymin < besty :              # if drop in skyline and better loc
+                fits = self._testrect(xmin, ymin, width + self.margin, height + self.margin)  # try to fit it in
+                if fits :                                   # save this winner
+                    bestx = xmin
+                    besty = ymin
+            yprev = ymin                                    # for detecting drop in skyline        
+        if bestx is None :                                  # if no find
+            return None                                     # didnt' fit      
+        #   Found location, update state of layout
+        for x in range (bestx, bestx + width + self.margin) :
+            self.skyline[x] = besty + height + self.margin       # increase skyline
+        self.ymax = max(self.ymax, besty + height + self.margin) # highest Y
+        rect = (bestx, besty, bestx + width, besty + height)
+        self.rects.append(rect)                             # keep rect
+        return rect                                         # success
                    
     def getsize(self) :
         """
