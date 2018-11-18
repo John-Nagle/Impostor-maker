@@ -16,6 +16,9 @@ import mathutils
 import math
 import tempfile
 import os
+from . import packislands
+import importlib
+importlib.reload(packislands)           # force a reload. Blender will not do this by default.
 #
 #   Constants
 #
@@ -37,7 +40,8 @@ SCREENFRACT = (2*math.atan(0.5/FSLOWLODDIST)) / VIEWANGLE # fraction of screen o
 PIXELSNEEDED = SCREENFRACT*TEXELSPERPIXEL*SCREENSIZE # number of pixels needed at this resolution
 
 TEXMAPWIDTH = 512                       # always this wide, height varies
-MARGIN = 3                              # space between images
+MARGIN = 3                              # pixels between images
+PACKMARGIN = 0.00                       # allow 1% space between images
 
 #   Brightness, to match input. Rather ad-hoc.
 EXPOSURECYCLES = 0.33                   # sems to work
@@ -46,6 +50,7 @@ ENERGYBLENDERLAMP = 0.015               # very small
 #   Debug settings
 DEBUGPRINT = True                       # enable debug print
 DEBUGMARKERS = False                    # add marking objects to scene
+DEBUGKEEP = False                       # keep created lamp and camera after exit
 
 #   Non-class functions
 
@@ -194,6 +199,7 @@ class ImageLayout :
     Very simple image layout planner
     
     Ask for a rectangle, and it fits it in.
+    This is just for a first try. Then we do a pack.
     """
     
     def __init__(self, margin, width, height = None) :
@@ -344,9 +350,7 @@ class ImpostorFace :
         upperright = mathutils.Vector((maxx, maxy, 0.0))
         width = upperright[0] - lowerleft[0]                                        # dimensions for ortho camera
         height = upperright[1] - lowerleft[1]
-        self.facebounds = (width, height)
-
-        
+        self.facebounds = (width, height)       
         lowerleft = faceplanemat * mathutils.Vector((minx, miny, 0.0))              # we have to transfer these back to obj coords to scale
         upperright = faceplanemat * mathutils.Vector((maxx, maxy, 0.0))
         newcenter = (lowerleft + upperright)*0.5                                    # in object coords
@@ -374,16 +378,17 @@ class ImpostorFace :
     def getcameratransform(self, disttocamera = 5.0) :
         """
         Get camera transform, world coordinates
-                """
+        """
         xvec = self.baseedge[1] - self.baseedge[0]                      # +X axis of desired plane, perpendicular to normal
         cameranormal = self.normal
         if self.poly.normal.dot(cameranormal) < 0 :
             cameranormal = -cameranormal
-        upvec = xvec.cross(self.normal)                                # up vector
+        print("Checked sign of camera normal") # ***TEMP**
+        upvec = xvec.cross(self.normal)                                 # up vector
         if DEBUGPRINT: 
             print("Getcameratransform: upvec: %s, normal: %s  camera normal %s" % (upvec, self.normal, cameranormal))
         orientmat = matrixlookat(mathutils.Vector((0,0,0)), -cameranormal, upvec)     # rotation to proper orientation 
-        camerapos = self.center + cameranormal*disttocamera              # location of camera, object coords
+        camerapos = self.center + cameranormal*disttocamera             # location of camera, object coords
         posmat = mathutils.Matrix.Translation(camerapos)
         return self.worldtransform * (posmat * orientmat)               # camera in world coordinates
       
@@ -407,12 +412,32 @@ class ImpostorFace :
         """
         return self.facebounds
         
+    def getuvrect(self, imagesize) :
+        """
+        Get bounding from UV information after packing
+        """
+        me = self.target.data                                                       # mesh info
+        if not me.uv_layers.active :
+            raise RuntimeError("Target object has no UV coordinates yet.")          # need to create these first  
+        ROUNDDOWN = 0.9999                                                          # so that we don't get the last pixel                            
+        uvvals = [me.uv_layers.active.data[loop_index].uv  for loop_index in self.loopindices] # all UV pairs
+        rect = [int(math.floor(min(uvval.x for uvval in uvvals)*ROUNDDOWN*imagesize[0])),     # bounding rect in pixel coords
+                int(math.floor(min(uvval.y for uvval in uvvals)*ROUNDDOWN*imagesize[1])),
+                int(math.floor(max(uvval.x for uvval in uvvals)*ROUNDDOWN*imagesize[0])),
+                int(math.floor(max(uvval.y for uvval in uvvals)*ROUNDDOWN*imagesize[1]))]
+        print("UV rect: %s" % (str(rect),))                                         # ***TEMP***
+        return rect
+        
+        
     def setupcamera(self, camera, dist = 5.0, margin = 0.0) :
         """
         Set camera params
         """
+        print("setupcamera, ortho scale (%1.2f,%1.2f)" % (self.getcameraorthoscale())) # ***TEMP***
         camera.data.ortho_scale = self.getcameraorthoscale()[0] * (1.0+margin)          # width of bounds, plus debug margin if desired
+        print("getting camera transform") # ***TEMP***
         camera.matrix_world = self.getcameratransform(dist)
+        print("got camera transform") # ***TEMP***
         camera.data.type = 'ORTHO'
         
     def setuplamp(self, lamp, dist, sizes) :
@@ -444,13 +469,16 @@ class ImpostorFace :
         scene.cycles.film_transparent = True                                            # transparent background, Cycles renderer
         scene.cycles.film_exposure = EXPOSURECYCLES                                     # set exposure, Cycles renderer
         ####renderout = scene.render.render(write_still=True)   # ***TEMP TEST***
+        print("Starting render") # ***TEMP***
         bpy.ops.render.render(write_still=True) 
+        print("Render complete") # ***TEMP***
         
     def rendertoimage(self, fd, width, height) :
         """
         Render to new image object
         """
         fd.truncate()                                                                   # clear file before rendering into it
+        print("Render to image") # ***TEMP***
         filename = fd.name
         self.rendertofile(filename, width, height)                                      # render into temp file
         bpy.data.images.load(filename, check_existing=True)
@@ -505,8 +533,6 @@ class ImpostorFace :
                 print("face idx: %i, vert idx: %i, uv: (%f, %f)" % (self.poly.index, vert_idx, uv_coords.x, uv_coords.y))
             else :
                 print("face idx: %i, vert idx: %i, uv: None" % (self.poly.index, vert_idx))
-
-    
 
     
 class ImpostorMaker(bpy.types.Operator) :
@@ -584,7 +610,30 @@ class ImpostorMaker(bpy.types.Operator) :
             layout.getrect(width, height)           # lay out in layout object  
         if DEBUGPRINT :         
             layout.dump()
-        
+            
+    def packlayout(self, target, layout, faces, margin) :
+        """
+        Pack layout more tightly into image. Blender has a built-in function for this.
+        """
+        margin = PACKMARGIN                                 # ***TEMP*** must be fraction
+        #   Do "Pack island" operation to improve layout
+        me = target.data                                    # mesh info
+        assert me, "No mesh"
+        assert not me.validate(), "Mesh invalid before pack of layout"
+        packislands.pack_uvs(target, rotate=False, margin=margin)   # pack islands more tightly
+        #   Get rects back from newly packed UVs
+        rects = []
+        for face in faces :                                 # get new rects afer packing.
+            rect = face.getuvrect(layout.getsize())
+            print("UV rect: %s" % (str(rect + list(layout.getsize())),))                                         # ***TEMP***
+
+            #   Rects must fit in image area
+            assert rect[0] >= 0 and rect[1] >= 0 , "Packed rect [%d,%d,%d,%d] negative bounds (%d,%d)" % tuple(rect + list(layout.getsize()))
+            assert rect[2] < layout.getsize()[0] and rect[3] < layout.getsize()[1], "Packed rect [%d,%d,%d,%d] out of bounds (%d,%d)" % tuple(rect + list(layout.getsize()))
+            rects.append(rect)
+        return rects
+            
+               
     def calcscalefactor(self, sortedfaces) :
         """
         Calculate scale factor, pixels per meter, to achieve desired texels per pixel
@@ -644,14 +693,19 @@ class ImpostorMaker(bpy.types.Operator) :
         """
         #   Layout phase
         assert len(faces) > 0, "No faces for impostor target"   
-        #   Pass 1 - find out how much space we need
+        #   Pass 1 - Prelminary layout
+        assert not target.data.validate(), "Mesh invalid before preliminary layout"
         sortedfaces = sorted(faces, key = lambda f : f.getfacebounds()[0], reverse=True) # widest faces first
         scalefactor = self.calcscalefactor(sortedfaces)
         layout = ImageLayout(margin, width, None)
         self.layoutcomposite(layout, sortedfaces, scalefactor)
+        assert not target.data.validate(), "Mesh invalid after preliminary layout"
         #   Pass 2 - layout in actual size image
         layout = ImageLayout(margin, width, nextpowerof2(layout.getsize()[1], self.MAXIMAGEDIM))  # round up to next power of 2
         self.layoutcomposite(layout, sortedfaces, scalefactor)
+        #   DO NOT USE PACKLAYOUT YET - bug in Blender 2.79 causes a crash after pack_islands has been used
+        ####rects = self.packlayout(target, layout, sortedfaces, margin)
+        ####layout.rects = rects                                                # force new rects into layout object
         #   Rendering phase
         setnorender(target, True)                                           # hide target impostor object during render
         imgname = IMPOSTORPREFIX + "I-" + target.name                       # Image is "IMI-name"
@@ -671,12 +725,14 @@ class ImpostorMaker(bpy.types.Operator) :
         print("Adding UV info.")
         me = target.data                                    # mesh info
         assert me, "Dump - no mesh"
+        assert not me.validate(), "Mesh invalid before UV creation"
         if not me.uv_layers.active :                        # if no UV layer to modify
             me.uv_textures.new()                            # create UV layer
         for face, rect in zip(faces, rects) :               # iterate over arrays in sync
             face.setuvs(target, rect, margin, size)         # set UV values for face
             if DEBUGPRINT :
                 face.dump()
+        assert not me.validate(), "Mesh invalid after UV creation"
             
     def addlamp(self, scene, name="Impostoring lamp") :
         """
@@ -701,6 +757,8 @@ class ImpostorMaker(bpy.types.Operator) :
             emissionnode = lamp_data.node_tree.nodes['Emission'] # just created by above
             lightfalloff = lamp_data.node_tree.nodes.new(type='ShaderNodeLightFalloff')  # we want no falloff with distance
             lamp_data.node_tree.links.new(lightfalloff.outputs['Constant'], emissionnode.inputs['Strength']) # Constant falloff -> Strength
+        else :
+            assert False, "Unknown renderer"                # some new feature we don't support?
         return lamp
         
     def compositefaces(self, name, sources, faces, layout) :
@@ -736,15 +794,18 @@ class ImpostorMaker(bpy.types.Operator) :
                     cameradist = max(face.getfacebounds()) * CAMERADISTFACTOR * 0.5 # Camera is half the size of the target face back from it.
                     if DEBUGPRINT :
                         print("Calculated camera distance: %1.2f" % (cameradist,))  
-                        print("Pasting sorted face %d (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
+                        print("Pasting sorted face %d size (%1.2f,%1.2f) -> (%d,%d)" % (i,face.getfacebounds()[0], face.getfacebounds()[1],width, height))
                     face.setupcamera(camera, cameradist, 0.05)              # point camera
+                    print("Camera set up") # ***TEMP***
                     face.setuplamp(lamp, cameradist, face.getfacebounds())  # lamp at camera
+                    print("Lamp set up.") # ***TEMP***
                     img = face.rendertoimage(fd, width, height)
                     composite.paste(img, rect[0], rect[1])                  # paste into image
                     deleteimg(img)                                          # get rid of just-rendered image
             #   Cleanup for all faces
-            finally: 
-                scene.objects.unlink(lamp)                                  # remove from scene
+            finally:
+                if not DEBUGKEEP :                                          # can keep for debug purposes
+                    scene.objects.unlink(lamp)                              # remove from scene
                 #   ***NEED TO DELETE LAMP?***
                 for obj in hideobjs :                                       # for all objects hidden from render
                     obj.hide_render = False                                 # restore old state
@@ -798,6 +859,7 @@ class ImpostorMaker(bpy.types.Operator) :
                 for f in faces :
                     f.dump()
             #   Do the real work
+            assert not target.data.validate(), "Mesh invalid before building impostor"
             self.buildcomposite(target, sources, faces, TEXMAPWIDTH, MARGIN)         # render and composite
             if DEBUGMARKERS : 
                 self.markimpostor(faces)                                    # Turn on if transform bugs to show faces.
