@@ -18,7 +18,7 @@ importlib.reload(impostormaker)                                 # force a reload
 bl_info = {
     "name": "Impostor maker",
     "author": "John Nagle",
-    "version": (1, 0, 3),
+    "version": (1, 0, 4),
     "blender": (2, 78, 0),
     "location": "Object > Second Life",
     "description": "Impostor object generator for Second Life",

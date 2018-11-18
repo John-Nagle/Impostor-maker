@@ -30,9 +30,12 @@ Unlike Blender baking, you do not have to adjust object scales or centers. That'
 # Limitations and bugs
 
 Currently, the output image is always 512 wide, and as high as it has to be to fit all the faces.
-Packing of all the faces into the image is inefficient.
+Packing of all the faces into the image is inefficient. This is related to a bug in Blender 2.79
+which prevents using the "pack_islands" function to repack the UV layout. Will try again in 
+Blender 2.80. 
 
 Display of the impostor in "Rendered" setting does not have proper alpha transparency. "Textured" 
 is OK.  This does not affect the generated impostor; it's just a Blender problem.
 
-
+There is a problem with very narrow faces, under 4 pixels wide, causing the add-on to fail an
+assertion check.
