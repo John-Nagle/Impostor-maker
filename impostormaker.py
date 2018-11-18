@@ -16,9 +16,6 @@ import mathutils
 import math
 import tempfile
 import os
-from . import packislands
-import importlib
-importlib.reload(packislands)           # force a reload. Blender will not do this by default.
 #
 #   Constants
 #
@@ -216,7 +213,6 @@ class ImageLayout :
         """
         Test whether rect can fit at position xleft
         """
-        ####print("Testrect: trying (%d,%d) at (%d,%d)" % (width, height, xmin, ymin)) # ***TEMP***
         assert xmin >= 0 and ymin >= 0, "Negative positions for testrect"
         if xmin + width >= len(self.skyline) :              # can't fit in image X
             return False
@@ -225,10 +221,8 @@ class ImageLayout :
         for x in range(xmin, xmin+width) :                  # if something else in way
             if self.skyline[x] > ymin :                     # if too tall
                 return False                                # can't fit
-        ####print("Testrect: success")                          # ***TEMP***
         return True                                         # can fit
-        
-                   
+                         
     def getrect(self, width, height) :
         """
         Ask for a rectangle, get back starting corner. Returns None if no space
@@ -434,33 +428,15 @@ class ImpostorFace :
         Returns width, for sorting
         """
         return self.facebounds
-        
-    def getuvrect(self, imagesize) :
-        """
-        Get bounding from UV information after packing
-        """
-        me = self.target.data                                                       # mesh info
-        if not me.uv_layers.active :
-            raise RuntimeError("Target object has no UV coordinates yet.")          # need to create these first  
-        ROUNDDOWN = 0.9999                                                          # so that we don't get the last pixel                            
-        uvvals = [me.uv_layers.active.data[loop_index].uv  for loop_index in self.loopindices] # all UV pairs
-        rect = [int(math.floor(min(uvval.x for uvval in uvvals)*ROUNDDOWN*imagesize[0])),     # bounding rect in pixel coords
-                int(math.floor(min(uvval.y for uvval in uvvals)*ROUNDDOWN*imagesize[1])),
-                int(math.floor(max(uvval.x for uvval in uvvals)*ROUNDDOWN*imagesize[0])),
-                int(math.floor(max(uvval.y for uvval in uvvals)*ROUNDDOWN*imagesize[1]))]
-        print("UV rect: %s" % (str(rect),))                                         # ***TEMP***
-        return rect
-        
-        
+               
     def setupcamera(self, camera, dist = 5.0, margin = 0.0) :
         """
         Set camera params
         """
-        print("setupcamera, ortho scale (%1.2f,%1.2f)" % (self.getcameraorthoscale())) # ***TEMP***
+        if DEBUGPRINT :
+            print("setupcamera, ortho scale (%1.2f,%1.2f)" % (self.getcameraorthoscale())) # ***TEMP***
         camera.data.ortho_scale = self.getcameraorthoscale()[0] * (1.0+margin)          # width of bounds, plus debug margin if desired
-        print("getting camera transform") # ***TEMP***
         camera.matrix_world = self.getcameratransform(dist)
-        print("got camera transform") # ***TEMP***
         camera.data.type = 'ORTHO'
         
     def setuplamp(self, lamp, dist, sizes) :
@@ -641,7 +617,7 @@ class ImpostorMaker(bpy.types.Operator) :
             
     def layoutimprove(self, layout, sortedfaces, scalefactor) :
         """
-        Pack layout as tightly as possible
+        Pack layout as tightly as possible. This just keeps repacking with a higher scale factor until the images don't fit.
         """
         INCREASEFACTOR = 1.10                               # increase by this factor until it doesn't fit
         trialscalefactor = scalefactor
@@ -655,33 +631,7 @@ class ImpostorMaker(bpy.types.Operator) :
                 return bestlayout                           # best one we found before fail
             bestlayout = triallayout                        # save best successful trial
             trialscalefactor = trialscalefactor * 1.10      # make images bigger and try again
-
-            
-    def packlayout(self, target, layout, faces, margin) :
-        """
-        Pack layout more tightly into image. Blender has a built-in function for this.
-        
-        NOT YET - bug in pack island operation in Blender.
-        """
-        margin = PACKMARGIN                                 # ***TEMP*** must be fraction
-        #   Do "Pack island" operation to improve layout
-        me = target.data                                    # mesh info
-        assert me, "No mesh"
-        assert not me.validate(), "Mesh invalid before pack of layout"
-        packislands.pack_uvs(target, rotate=False, margin=margin)   # pack islands more tightly
-        #   Get rects back from newly packed UVs
-        rects = []
-        for face in faces :                                 # get new rects afer packing.
-            rect = face.getuvrect(layout.getsize())
-            print("UV rect: %s" % (str(rect + list(layout.getsize())),))                                         # ***TEMP***
-
-            #   Rects must fit in image area
-            assert rect[0] >= 0 and rect[1] >= 0 , "Packed rect [%d,%d,%d,%d] negative bounds (%d,%d)" % tuple(rect + list(layout.getsize()))
-            assert rect[2] < layout.getsize()[0] and rect[3] < layout.getsize()[1], "Packed rect [%d,%d,%d,%d] out of bounds (%d,%d)" % tuple(rect + list(layout.getsize()))
-            rects.append(rect)
-        return rects
-            
-               
+             
     def calcscalefactor(self, sortedfaces) :
         """
         Calculate scale factor, pixels per meter, to achieve desired texels per pixel
@@ -754,12 +704,7 @@ class ImpostorMaker(bpy.types.Operator) :
         #   Pass 2 - layout in actual size image
         if DEBUGPRINT :
             print("--- Layout, pass 2 ---")
-        ####layout = ImageLayout(margin, width, nextpowerof2(layout.getsize()[1], self.MAXIMAGEDIM))  # round up to next power of 2
-        ####self.layoutcomposite(layout, sortedfaces, scalefactor)
         layout = self.layoutimprove(layout, sortedfaces, scalefactor)       # tighten up layout
-        #   DO NOT USE PACKLAYOUT YET - bug in Blender 2.79 causes a crash after pack_islands has been used
-        ####rects = self.packlayout(target, layout, sortedfaces, margin)
-        ####layout.rects = rects                                                # force new rects into layout object
         #   Rendering phase
         if DEBUGPRINT :
             print("--- Rendering ---")
@@ -901,7 +846,6 @@ class ImpostorMaker(bpy.types.Operator) :
             bpy.context.object.matrix_world = xformworld            # apply rotation
             #   ***NEED TO MOVE ORIGIN TO END***
             bpy.context.object.scale = mathutils.Vector((0.01, 0.01, 4.0))*0.5                  # apply scale
-
 
                 
     def buildimpostor(self, context, target, sources) :
