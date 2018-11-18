@@ -36,7 +36,7 @@ TEXELSPERPIXEL = 1                      # provide this many texels per pixel
 SCREENFRACT = (2*math.atan(0.5/FSLOWLODDIST)) / VIEWANGLE # fraction of screen occupied by object at low LOD point
 PIXELSNEEDED = SCREENFRACT*TEXELSPERPIXEL*SCREENSIZE # number of pixels needed at this resolution
 
-TEXMAPWIDTH = 512                       # always this wide, height varies
+TEXMAPWIDTH = 256                       # always this wide, height varies
 MARGIN = 3                              # pixels between images
 PACKMARGIN = 0.00                       # allow 1% space between images
 
