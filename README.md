@@ -1,7 +1,7 @@
 # Impostor-maker
 Blender impostor maker for creating Second Life content
 
-PRE-ALPHA - suggested for developers only at this time.
+ALPHA - ready for initial test usage    
 
 # Installation
 (To be provided)

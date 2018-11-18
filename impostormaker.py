@@ -199,7 +199,6 @@ class ImageLayout :
     Very simple image layout planner
     
     Ask for a rectangle, and it fits it in.
-    This is just for a first try. Then we do a pack.
     """
     
     def __init__(self, margin, width, height = None) :
@@ -209,11 +208,14 @@ class ImageLayout :
         self.xpos = 0                               # next starting point, X
         self.ypos = 0                               # next starting point, Y
         self.ymax = 0                               # used this much space
+        self.skyline = [0]*width                    # max height at this X position
         self.rects = []                             # allocated rectangles
         
-    def getrect(self, width, height) :
+    def getrectold(self, width, height) :
         """
         Ask for a rectangle, get back starting corner
+        
+        OBSOLETE
         """
         if (width > self.width - 2*self.margin) :
             raise ValueError("Image too large to composite into target image")
@@ -234,7 +236,47 @@ class ImageLayout :
         if self.height and self.ypos > self.height :    # if specified size and won't fit
             raise ValueError("Image (%d,%d) will not fit into desired target image size of (%d,%d)" % (width, height, self.width, self.height))
         return rect
-            
+        
+    def _testrect(self, xmin, ymin, width, height) :
+        """
+        Test whether rect can fit at position xleft
+        """
+        print("Testrect: trying (%d,%d) at (%d,%d)" % (width, height, xmin, ymin)) # ***TEMP***
+        assert xmin >= 0 and ymin >= 0, "Negative positions for testrect"
+        if xmin + width >= len(self.skyline) :              # can't fit in image X
+            return False
+        if self.height and ymin + height >= self.height :
+            return False                                    # can't fit in image Y
+        for x in range(xmin, xmin+width) :                  # if something else in way
+            if self.skyline[x] > ymin :                     # if too tall
+                return False                                # can't fit
+        print("Testrect: success")                          # ***TEMP***
+        return True                                         # can fit
+        
+    def getrect(self, width, height, ystart = 0) :
+        """
+        Ask for a rectangle, get back starting corner. Returns None if no space
+        """
+        if (width > self.width - self.margin) :
+            raise ValueError("Image too large to composite into target image")
+        yprev = ystart                                      # minimum Y at which to test                 
+        for xmin in range(0, len(self.skyline) - width) :   # for possible locations 
+            ymin = self.skyline[xmin]                       # Y at this point in skyline                           
+            if ymin < yprev :                               # if drop in skyline
+                fits = self._testrect(xmin, ymin, width + self.margin, height + self.margin)  # try to fit it in
+                if fits :                                   # if it fits
+                    for x in range (xmin, xmin + width + self.margin) :
+                        self.skyline[x] = ymin+height + self.margin       # increase skyline
+                    self.ymax = max(self.ymax, ymin + height + self.margin) # highest Y
+                    rect = (xmin, ymin, xmin + width, ymin + height)
+                    self.rects.append(rect)                 # keep rect
+                    return rect                             # success
+            #   Didn't fit at xmin, ymin
+            yprev = ymin                                    # for skyline drop test
+        if ystart == 0 :                                    # if failed looking in X
+            return self.getrect(width, height, self.skyline[0] + 1)  # try to start a new row
+        return None                                         # didn't fit
+                   
     def getsize(self) :
         """
         Return final size of image
@@ -607,13 +649,17 @@ class ImpostorMaker(bpy.types.Operator) :
             width = int(math.floor(face.getfacebounds()[0] * scalefactor))   # width in pixels
             height = int(math.floor(face.getfacebounds()[1] * scalefactor))   # height in pixels
             ####print("Face size in pixels: (%d,%d)" % (width, height)) # ***TEMP***
-            layout.getrect(width, height)           # lay out in layout object  
+            rect = layout.getrect(width, height)           # lay out in layout object 
+            if rect is None :                              # didn't fit
+                raise ValueError("Image (%d,%d) will not fit into desired target image size of (%d,%d)" % (width, height, layout.getsize()[0], layout.getsize()[1]))                          
         if DEBUGPRINT :         
             layout.dump()
             
     def packlayout(self, target, layout, faces, margin) :
         """
         Pack layout more tightly into image. Blender has a built-in function for this.
+        
+        NOT YET - bug in pack island operation in Blender.
         """
         margin = PACKMARGIN                                 # ***TEMP*** must be fraction
         #   Do "Pack island" operation to improve layout
@@ -695,25 +741,35 @@ class ImpostorMaker(bpy.types.Operator) :
         assert len(faces) > 0, "No faces for impostor target"   
         #   Pass 1 - Prelminary layout
         assert not target.data.validate(), "Mesh invalid before preliminary layout"
+        if DEBUGPRINT :
+            print("--- Layout, pass 1 ---")
         sortedfaces = sorted(faces, key = lambda f : f.getfacebounds()[0], reverse=True) # widest faces first
         scalefactor = self.calcscalefactor(sortedfaces)
         layout = ImageLayout(margin, width, None)
         self.layoutcomposite(layout, sortedfaces, scalefactor)
         assert not target.data.validate(), "Mesh invalid after preliminary layout"
         #   Pass 2 - layout in actual size image
+        if DEBUGPRINT :
+            print("--- Layout, pass 2 ---")
         layout = ImageLayout(margin, width, nextpowerof2(layout.getsize()[1], self.MAXIMAGEDIM))  # round up to next power of 2
         self.layoutcomposite(layout, sortedfaces, scalefactor)
         #   DO NOT USE PACKLAYOUT YET - bug in Blender 2.79 causes a crash after pack_islands has been used
         ####rects = self.packlayout(target, layout, sortedfaces, margin)
         ####layout.rects = rects                                                # force new rects into layout object
         #   Rendering phase
+        if DEBUGPRINT :
+            print("--- Rendering ---")
         setnorender(target, True)                                           # hide target impostor object during render
         imgname = IMPOSTORPREFIX + "I-" + target.name                       # Image is "IMI-name"
         outimg = self.compositefaces(imgname, sources, sortedfaces, layout) # do the real work
         setnorender(target, False)                                          # hide target impostor object during render
         #   UV setup phase
+        if DEBUGPRINT :
+            print("--- UV setup ---")
         self.adduvlayer(target, sortedfaces, layout, margin)
         #   Output
+        if DEBUGPRINT :
+            print("--- Output ---")
         self.outputcomposite(target, outimg)                                # save image in Blender world
         
     def adduvlayer(self, target, faces, layout, margin) :
